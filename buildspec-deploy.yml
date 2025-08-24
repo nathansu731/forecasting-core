@@ -1,0 +1,10 @@
+version: 0.2
+phases:
+  build:
+    commands:
+      - echo Deploying Lambda image...
+      - IMAGE_URI=$(cat image-detail.json | jq -r .imageUri)
+      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --image-uri $IMAGE_URI
+artifacts:
+  files:
+    - image-detail.json

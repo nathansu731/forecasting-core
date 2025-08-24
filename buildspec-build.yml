@@ -1,0 +1,30 @@
+version: 0.2
+env:
+  variables:
+    IMAGE_NAME: forecast-lambda
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REGION=$(aws configure get region || echo $AWS_DEFAULT_REGION)
+      - REPO_URI=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${IMAGE_NAME}
+      - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin ${REPO_URI}
+      - GIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+  build:
+    commands:
+      - echo Building Docker image...
+      - docker build -t ${IMAGE_NAME}:$GIT_SHA .
+      - docker tag ${IMAGE_NAME}:$GIT_SHA ${REPO_URI}:$GIT_SHA
+      - docker tag ${IMAGE_NAME}:$GIT_SHA ${REPO_URI}:latest
+  post_build:
+    commands:
+      - echo Pushing image to ECR...
+      - docker push ${REPO_URI}:$GIT_SHA
+      - docker push ${REPO_URI}:latest
+      # Emit artifact with the full image URI for deploy stage
+      - printf '{"imageUri":"%s"}' "${REPO_URI}:${GIT_SHA}" > image-detail.json
+artifacts:
+  files:
+    - image-detail.json
