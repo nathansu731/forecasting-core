@@ -1,0 +1,35 @@
+#!/bin/sh
+set -euo pipefail
+
+if [ -z "${AWS_LAMBDA_RUNTIME_API:-}" ]; then
+  echo "Running in LOCAL mode..."
+
+  # Use first argument as JSON event, or default to {"msg":"hello"}
+  EVENT=${1:-'{"msg":"hello"}'}
+
+  echo "$EVENT" | Rscript -e "
+    library(jsonlite)
+    event <- fromJSON(readLines('stdin'), simplifyVector = FALSE)
+    source('/var/task/entrypoint.R')
+    result <- handler(event, NULL)
+    cat(toJSON(result, auto_unbox = TRUE))
+  "
+  exit 0
+fi
+
+# --- Lambda mode ---
+while true; do
+  if ! read -r EVENT; then
+    exit 0
+  fi
+
+  RESPONSE=$(echo "$EVENT" | Rscript -e "
+    library(jsonlite)
+    event <- fromJSON(readLines('stdin'), simplifyVector = FALSE)
+    source('/var/task/entrypoint.R')
+    result <- handler(event, NULL)
+    cat(toJSON(result, auto_unbox = TRUE))
+  ")
+
+  echo "$RESPONSE"
+done

@@ -1,0 +1,24 @@
+FROM amazonlinux:2
+
+ARG R_VERSION=4.3.3
+
+# Install build dependencies for R
+RUN yum update -y && yum install -y \
+    gcc gcc-c++ gcc-gfortran make \
+    libcurl-devel libxml2-devel openssl-devel \
+    readline-devel pcre2-devel zlib-devel bzip2 bzip2-devel xz xz-devel \
+    tar gzip wget curl which \
+    perl perl-core ncurses-devel \
+    texinfo texlive texlive-ec texlive-texconfig \
+    && yum clean all
+
+# Download and build R from source
+RUN curl -fsSL https://cran.r-project.org/src/base/R-4/R-${R_VERSION}.tar.gz -o R-${R_VERSION}.tar.gz \
+ && tar -xzf R-${R_VERSION}.tar.gz \
+ && cd R-${R_VERSION} \
+ && ./configure --prefix=/opt/R/${R_VERSION} --enable-R-shlib --with-x=no \
+ && make -j"$(nproc)" \
+ && make install
+
+# Package R into a tarball for reuse
+RUN cd /opt && tar -czf /tmp/R-amzn2-${R_VERSION}.tar.gz R
