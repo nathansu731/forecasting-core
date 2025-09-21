@@ -1,7 +1,12 @@
 type Query {
-    forecast(series: [Float!]!, horizon: Int!): [Float!]!
+    forecast(input: ForecastInput!): ForecastResult
 }
 
-schema {
-    query: Query
+input ForecastInput {
+    seriesId: String!
+    horizon: Int!
+}
+
+type ForecastResult {
+    values: [Float]
 }
