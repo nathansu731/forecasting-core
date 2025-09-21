@@ -5,10 +5,12 @@ terraform {
   }
 }
 
-provider "aws" { region = var.region }
+provider "aws" {
+  region = var.region
+}
 
 locals {
-  ecr_name        = "forecast-lambda"
+  ecr_name        = "forecasting-core" # <-- corrected ECR repo name
   artifact_bucket = "${var.project_name}-artifacts-${data.aws_caller_identity.me.account_id}"
 }
 
@@ -20,10 +22,51 @@ resource "aws_ecr_repository" "repo" {
   image_scanning_configuration { scan_on_push = true }
   force_delete = true
 }
+# Allow Lambda to pull images
+resource "aws_ecr_repository_policy" "lambda_pull" {
+  repository = aws_ecr_repository.repo.name
+
+  policy = jsonencode({
+    Version = "2008-10-17"
+    Statement = [
+      {
+        Sid      = "AllowLambdaPull"
+        Effect   = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = [
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_ecr_pull" {
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 
 # ---------- S3 for artifacts ----------
 resource "aws_s3_bucket" "artifacts" {
-  bucket = local.artifact_bucket
+  bucket        = local.artifact_bucket
   force_destroy = true
 }
 resource "aws_s3_bucket_versioning" "artifacts" {
@@ -32,14 +75,23 @@ resource "aws_s3_bucket_versioning" "artifacts" {
 }
 resource "aws_s3_bucket_server_side_encryption_configuration" "artifacts" {
   bucket = aws_s3_bucket.artifacts.id
-  rule { apply_server_side_encryption_by_default { sse_algorithm = "AES256" } }
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
+
 
 # ---------- IAM: CodeBuild roles ----------
 data "aws_iam_policy_document" "codebuild_assume" {
   statement {
     actions = ["sts:AssumeRole"]
-    principals { type = "Service" identifiers = ["codebuild.amazonaws.com"] }
+    principals {
+      type = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
   }
 }
 
@@ -92,9 +144,12 @@ resource "aws_codebuild_project" "build" {
       value = var.region
     }
   }
-  source { type = "CODEPIPELINE" }
+  source {
+    type = "CODEPIPELINE"
+    buildspec   = "buildspec-build.yml"
+
+  }
   queued_timeout  = 60
-  timeout         = 30
 }
 
 resource "aws_codebuild_project" "deploy" {
@@ -110,16 +165,21 @@ resource "aws_codebuild_project" "deploy" {
       value = var.lambda_function_name
     }
   }
-  source { type = "CODEPIPELINE" }
+  source {
+    type = "CODEPIPELINE"
+    buildspec   = "buildspec-build.yml"
+  }
   queued_timeout  = 30
-  timeout         = 15
 }
 
 # ---------- IAM: CodePipeline ----------
 data "aws_iam_policy_document" "codepipeline_assume" {
   statement {
     actions = ["sts:AssumeRole"]
-    principals { type = "Service" identifiers = ["codepipeline.amazonaws.com"] }
+    principals {
+      type = "Service"
+      identifiers = ["codepipeline.amazonaws.com"]
+    }
   }
 }
 resource "aws_iam_role" "cp_role" {
@@ -178,7 +238,6 @@ resource "aws_codepipeline" "pipeline" {
       output_artifacts = ["BuildOutput"]
       configuration = {
         ProjectName = aws_codebuild_project.build.name
-        Buildspec   = "buildspec-build.yml"
       }
     }
   }
@@ -194,29 +253,30 @@ resource "aws_codepipeline" "pipeline" {
       input_artifacts = ["BuildOutput"]
       configuration = {
         ProjectName = aws_codebuild_project.deploy.name
-        Buildspec   = "buildspec-deploy.yml"
       }
     }
   }
 }
 
 # ---------- Lambda (container image) ----------
-# For first create: set var.initial_image_uri to something valid in ECR (can be :latest after manual push)
 resource "aws_lambda_function" "fn" {
   function_name = var.lambda_function_name
   package_type  = "Image"
-  image_uri     = var.initial_image_uri != "" ? var.initial_image_uri : "${aws_ecr_repository.repo.repository_url}:bootstrap"
+  image_uri     = var.initial_image_uri
   role          = aws_iam_role.lambda_exec.arn
-  timeout       = 900
-  memory_size   = 2048
+  timeout       = 120
+  memory_size   = 1024
   architectures = ["x86_64"]
 }
 
-# Lambda execution role (if your function needs S3, Redshift, etc., extend here)
+# Lambda execution role
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
-    principals { type = "Service" identifiers = ["lambda.amazonaws.com"] }
+    principals {
+      type = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
   }
 }
 resource "aws_iam_role" "lambda_exec" {
@@ -226,4 +286,88 @@ resource "aws_iam_role" "lambda_exec" {
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+resource "aws_iam_role_policy_attachment" "lambda_ecr" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# ---------- AppSync ----------
+resource "aws_appsync_graphql_api" "api" {
+  name                = "${var.project_name}-api"
+  authentication_type = "API_KEY"
+
+  additional_authentication_provider {
+    authentication_type = "AWS_IAM"
+  }
+
+  xray_enabled = true
+  schema = file("${path.module}/schema.graphql")
+}
+
+resource "aws_appsync_api_key" "key" {
+  api_id = aws_appsync_graphql_api.api.id
+}
+
+# Lambda datasource
+resource "aws_appsync_datasource" "lambda" {
+  api_id           = aws_appsync_graphql_api.api.id
+  name             = "LambdaSource"
+  type             = "AWS_LAMBDA"
+  service_role_arn = aws_iam_role.appsync_lambda_role.arn
+
+  lambda_config {
+    function_arn = aws_lambda_function.fn.arn
+  }
+}
+
+# IAM role for AppSync to invoke Lambda
+data "aws_iam_policy_document" "appsync_lambda_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type = "Service"
+      identifiers = ["appsync.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "appsync_lambda_role" {
+  name               = "${var.project_name}-appsync-lambda"
+  assume_role_policy = data.aws_iam_policy_document.appsync_lambda_assume.json
+}
+
+resource "aws_iam_role_policy" "appsync_lambda_invoke" {
+  role = aws_iam_role.appsync_lambda_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = aws_lambda_function.fn.arn
+      }
+    ]
+  })
+}
+
+# Example resolver
+resource "aws_appsync_resolver" "forecast" {
+  api_id            = aws_appsync_graphql_api.api.id
+  type              = "Query"
+  field             = "forecast"
+  data_source       = aws_appsync_datasource.lambda.name
+  kind              = "UNIT"
+
+  request_template  = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": $util.toJson($context.arguments)
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
 }

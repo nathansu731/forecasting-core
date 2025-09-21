@@ -1,0 +1,7 @@
+type Query {
+    forecast(series: [Float!]!, horizon: Int!): [Float!]!
+}
+
+schema {
+    query: Query
+}
