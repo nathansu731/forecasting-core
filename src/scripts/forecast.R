@@ -121,3 +121,50 @@ do_global_forecasting <- function(dataset, dataset_name, method, forecast_horizo
   calculate_errors(as.matrix(forecast_matrix), actual_matrix, file.path(BASE_DIR, "results", "errors", paste0(dataset_name, "_", method), fsep = "/"))
 }
 
+################### FROM AROSHA
+## a = list()
+## a[[1]] = c(10, 12, 14, 15)
+## a[[2]] = c(5, 7, 9, 11, 12)
+###
+
+run_forecast <- function(input_data) {
+  # Ensure input_data is a named list (from JSON)
+  if (is.null(input_data) || length(input_data) == 0) {
+    stop("No input_data provided")
+  }
+
+  # Convert JSON (list of numeric arrays) into R list 'a'
+  a <- list()
+  idx <- 1
+  
+  for (sku in names(input_data)) {
+    values <- input_data[[sku]]
+    
+    # Ensure numeric conversion
+    if (!is.numeric(values)) {
+      values <- as.numeric(values)
+    }
+    
+    a[[idx]] <- values
+    idx <- idx + 1
+  }
+  
+  # Example placeholder: simple forecast output
+  # Replace this with your model logic
+  forecast_result <- lapply(a, function(series) {
+    mean_val <- mean(series, na.rm = TRUE)
+    return(list(
+      length = length(series),
+      mean = mean_val,
+      next_value_estimate = mean_val  # dummy forecast
+    ))
+  })
+  
+  # You can return both the processed list and results
+  return(list(
+    input_as_list = a,
+    forecast = forecast_result
+  ))
+}
+
+##################### / FROM AROSHA
