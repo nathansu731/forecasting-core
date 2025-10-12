@@ -10,7 +10,7 @@ provider "aws" {
 }
 
 locals {
-  ecr_name        = "forecasting-core" # <-- corrected ECR repo name
+  ecr_name        = "forecasting-core"
   artifact_bucket = "${var.project_name}-artifacts-${data.aws_caller_identity.me.account_id}"
 }
 

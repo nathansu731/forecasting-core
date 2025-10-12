@@ -1,5 +1,5 @@
 type Query {
-    forecast(input: ForecastInput!): ForecastResult
+  forecast(input_data: AWSJSON!): AWSJSON
 }
 
 input ForecastInput {
