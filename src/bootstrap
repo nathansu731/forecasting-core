@@ -1,35 +1,71 @@
 #!/bin/sh
 set -euo pipefail
 
-if [ -z "${AWS_LAMBDA_RUNTIME_API:-}" ]; then
-  echo "Running in LOCAL mode..."
+API="$AWS_LAMBDA_RUNTIME_API"
 
-  # Use first argument as JSON event, or default to {"msg":"hello"}
-  EVENT=${1:-'{"msg":"hello"}'}
+log() {
+  echo "[bootstrap] $1" 1>&2
+}
 
-  echo "$EVENT" | Rscript -e "
-    library(jsonlite)
-    event <- fromJSON(readLines('stdin'), simplifyVector = FALSE)
-    source('/var/task/entrypoint.R')
+log "Starting R custom runtime..."
+
+read_response() {
+  RAW=$(curl -s -i "http://${API}/2018-06-01/runtime/invocation/next")
+
+  # Extract Request ID from Lambda Runtime API header
+  REQUEST_ID=$(printf "%s" "$RAW" \
+    | grep -i "^Lambda-Runtime-Aws-Request-Id:" \
+    | awk '{print $2}' \
+    | tr -d '\r')
+
+  # Extract only JSON body (after blank line)
+  EVENT=$(printf "%s" "$RAW" | sed '1,/^\r$/d')
+}
+
+    # Call R
+cat <<-'EOF' > /tmp/run_event.R
+  library(jsonlite)
+  tryCatch({
+    args <- commandArgs(trailingOnly = TRUE)
+    event <- fromJSON(file(args[1]), simplifyVector = FALSE)
+    message("EVENT RECEIVED: ", toJSON(event))
+    source("/var/task/entrypoint.R")
     result <- handler(event, NULL)
     cat(toJSON(result, auto_unbox = TRUE))
-  "
-  exit 0
-fi
+  }, error=function(e) {
+    message("R ERROR: ", e$message)
+    stop(e)
+  })
+EOF
 
-# --- Lambda mode ---
 while true; do
-  if ! read -r EVENT; then
-    exit 0
+  log "Requesting next event..."
+    read_response
+
+    if [ -z "$REQUEST_ID" ]; then
+      log "ERROR: No requestId in event"
+      continue
+    fi
+
+    log "Received requestId: $REQUEST_ID"
+
+    echo "$EVENT" > /tmp/event.json
+    RESPONSE=$(Rscript /tmp/run_event.R /tmp/event.json)
+
+
+  if [ $? -ne 0 ]; then
+    ERROR="{\"errorMessage\": \"R failed\"}"
+    log "R ERROR — Posting error back to Lambda..."
+    curl -s -X POST \
+      "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/error" \
+      -d "$ERROR"
+    continue
   fi
 
-  RESPONSE=$(echo "$EVENT" | Rscript -e "
-    library(jsonlite)
-    event <- fromJSON(readLines('stdin'), simplifyVector = FALSE)
-    source('/var/task/entrypoint.R')
-    result <- handler(event, NULL)
-    cat(toJSON(result, auto_unbox = TRUE))
-  ")
+  log "Posting response for $REQUEST_ID"
 
-  echo "$RESPONSE"
+  curl -s -X POST \
+    "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" \
+    -d "$RESPONSE"
+
 done

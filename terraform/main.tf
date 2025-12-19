@@ -167,7 +167,7 @@ resource "aws_codebuild_project" "deploy" {
   }
   source {
     type = "CODEPIPELINE"
-    buildspec   = "buildspec-build.yml"
+    buildspec   = "buildspec-deploy.yml"
   }
   queued_timeout  = 30
 }
@@ -339,31 +339,40 @@ resource "aws_iam_role" "appsync_lambda_role" {
 
 resource "aws_iam_role_policy" "appsync_lambda_invoke" {
   role = aws_iam_role.appsync_lambda_role.id
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["lambda:InvokeFunction"]
-        Resource = aws_lambda_function.fn.arn
+        Effect = "Allow"
+        Action = ["lambda:InvokeFunction"]
+        Resource = [
+          aws_lambda_function.fn.arn,
+          "${aws_lambda_function.fn.arn}:*"
+        ]
       }
     ]
   })
 }
 
-# Example resolver
-resource "aws_appsync_resolver" "forecast" {
-  api_id            = aws_appsync_graphql_api.api.id
-  type              = "Query"
-  field             = "forecast"
-  data_source       = aws_appsync_datasource.lambda.name
-  kind              = "UNIT"
+# ----------------- Appsync Resolvers -------------------------
+resource "aws_appsync_resolver" "run_forecast_test" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "runForecastTest"
+  data_source = aws_appsync_datasource.lambda.name
+  kind        = "UNIT"
 
-  request_template  = <<EOF
+  request_template = <<EOF
 {
   "version": "2018-05-29",
   "operation": "Invoke",
-  "payload": $util.toJson($context.arguments)
+  "payload": {
+    "info": {
+      "fieldName": "runForecastTest"
+    },
+    "input": $util.toJson($context.arguments)
+  }
 }
 EOF
 
@@ -371,6 +380,80 @@ EOF
 $util.toJson($context.result)
 EOF
 }
+
+resource "aws_appsync_resolver" "get_skus_metadata" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getSKUsMetadata"
+  data_source = aws_appsync_datasource.lambda.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getSKUsMetadata"
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "get_sku_forecasts" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getSKUForecasts"
+  data_source = aws_appsync_datasource.lambda.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getSKUForecasts"
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "get_monthly_totals" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getMonthlyTotals"
+  data_source = aws_appsync_datasource.lambda.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getMonthlyTotals"
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+# ------------------ /Appsync Resolvers -------------------------
 
 output "appsync_api_url" {
   value = aws_appsync_graphql_api.api.uris["GRAPHQL"]

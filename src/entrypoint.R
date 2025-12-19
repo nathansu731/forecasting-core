@@ -1,30 +1,40 @@
-#!/usr/bin/env Rscript
 library(jsonlite)
 
-# Your Lambda-style handler
+# Load forecast functions
+source("/var/task/scripts/forecast.R")
+
 handler <- function(event, context) {
-  # Example: call forecasting logic
-  source("scripts/forecast.R")
-  result <- run_forecast(event$input_data)
-  return(list(status="success", result=result))
+
+  field_name <- event$info$fieldName
+  message("AppSync field invoked: ", field_name)
+
+  result <- switch(
+    field_name,
+
+    "runForecastTest" = {
+      input_data <- event$input$input_data
+      run_forecast_test(input_data)
+    },
+
+    "getSKUsMetadata" = {
+      get_skus_metadata_test()
+    },
+
+    "getSKUForecasts" = {
+      get_sku_forecasts_test()
+    },
+
+    "getMonthlyTotals" = {
+      get_monthly_totals_test()
+    },
+
+    {
+      stop(paste("Unknown AppSync field:", field_name))
+    }
+  )
+
+  list(
+    status = "success",
+    result = result
+  )
 }
-
-# Lambda bootstrap will pass the event file path as the first arg
-args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 1) stop("No event path provided")
-
-event_path <- args[1]
-
-# Read and parse the incoming event JSON
-json <- readChar(event_path, file.info(event_path)$size)
-event <- tryCatch(fromJSON(json, simplifyVector = TRUE), error = function(e) NULL)
-
-# Context is not used here but you can pass metadata later
-context <- list()
-
-# Call handler
-result <- handler(event, context)
-
-# Print as JSON so bootstrap can POST to Lambda Runtime API
-cat(toJSON(result, auto_unbox = TRUE))
-

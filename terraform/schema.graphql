@@ -1,12 +1,31 @@
+schema {
+    query: Query
+}
+
+# -------------------------------
+# Queries
+# -------------------------------
 type Query {
-  forecast(input_data: AWSJSON!): AWSJSON
+    runForecastTest(input: ForecastInput): GenericResponse!
+
+    getSKUsMetadata: GenericResponse!
+
+    getSKUForecasts: GenericResponse!
+
+    getMonthlyTotals: GenericResponse!
 }
 
+# -------------------------------
+# Generic Lambda response
+# -------------------------------
+type GenericResponse {
+    status: String!
+    result: AWSJSON
+}
+
+# -------------------------------
+# Input types
+# -------------------------------
 input ForecastInput {
-    seriesId: String!
-    horizon: Int!
-}
-
-type ForecastResult {
-    values: [Float]
+    input_data: AWSJSON
 }
