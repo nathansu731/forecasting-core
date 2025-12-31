@@ -217,6 +217,34 @@ get_skus_metadata_test <- function() {
   return(metadata)
 }
 
+get_report_summary_test <- function() {
+  set.seed(321)
+
+  report_ids <- paste0("report_", sprintf("%02d", 1:100))
+  dates <- seq(as.Date("2024-01-01"), by = "7 days", length.out = length(report_ids))
+  regions <- c("North America", "Europe", "APAC", "LATAM")
+  products <- c("Product A", "Product B", "Product C", "Product D")
+  methods <- c("ARIMA", "ETS", "Prophet", "XGBoost")
+  statuses <- c("Completed", "In Progress", "Delayed")
+
+  reports <- lapply(seq_along(report_ids), function(i) {
+    revenue_value <- sample(seq(50000, 500000, by = 1000), 1)
+    list(
+      date = format(dates[i], "%Y-%m-%d"),
+      region = sample(regions, 1),
+      product = sample(products, 1),
+      revenue = paste0("$", formatC(revenue_value, format = "d", big.mark = ",")),
+      forecast_method = sample(methods, 1),
+      accuracy = paste0(formatC(runif(1, 85, 99), format = "f", digits = 1), "%"),
+      status = sample(statuses, 1),
+      variance = round(runif(1, -5, 5), 1)
+    )
+  })
+
+  names(reports) <- report_ids
+  return(reports)
+}
+
 get_sku_forecasts_test <- function() {
   set.seed(456)
 
@@ -228,7 +256,11 @@ get_sku_forecasts_test <- function() {
     "forecastAdjustment",
     "previousForecasts",
     "variance",
-    "revenue"
+    "revenue",
+    "accuracy",
+    "error",
+    "biasPercent",
+    "bias"
   )
 
   months <- format(
@@ -246,7 +278,9 @@ get_sku_forecasts_test <- function() {
   metric_data <- lapply(metrics, function(metric) {
     values <- sample(-1000:9999, length(months), replace = TRUE)
     names(values) <- months
-    as.list(values)
+    values_list <- as.list(values)
+    values_list$average <- round(mean(values), 2)
+    values_list
   })
 
   names(metric_data) <- metrics
@@ -267,7 +301,11 @@ get_monthly_totals_test <- function() {
     "ebitda",
     "cashFlow",
     "marketShare",
-    "customerAcquisition"
+    "customerAcquisition",
+    "totalSKUs",
+    "forecastAccuracy",
+    "OutOfStockRisk",
+    "AvgLeadTime"
   )
 
   totals <- lapply(metrics, function(metric) {

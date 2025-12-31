@@ -20,6 +20,10 @@ handler <- function(event, context) {
       get_skus_metadata_test()
     },
 
+    "getReportSummary" = {
+      get_report_summary_test()
+    },
+
     "getSKUForecasts" = {
       get_sku_forecasts_test()
     },

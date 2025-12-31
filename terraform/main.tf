@@ -405,6 +405,30 @@ $util.toJson($context.result)
 EOF
 }
 
+resource "aws_appsync_resolver" "get_report_summary" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getReportSummary"
+  data_source = aws_appsync_datasource.lambda.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getReportSummary"
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
 resource "aws_appsync_resolver" "get_sku_forecasts" {
   api_id      = aws_appsync_graphql_api.api.id
   type        = "Query"
