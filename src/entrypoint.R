@@ -5,6 +5,10 @@ source("/var/task/scripts/forecast.R")
 
 handler <- function(event, context) {
 
+  if (!is.null(event$mode) && event$mode == "forecast_run") {
+    return(run_forecast_pipeline(event))
+  }
+
   field_name <- event$info$fieldName
   message("AppSync field invoked: ", field_name)
 

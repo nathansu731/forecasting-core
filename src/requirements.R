@@ -1,6 +1,5 @@
 jsonlite
 httr
 forecast
-fable
-fabletools
-tsibble
+paws.storage
+lubridate

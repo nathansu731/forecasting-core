@@ -8,6 +8,10 @@ variable "region" {
   default = "ap-southeast-2"
 }
 
+variable "cognito_user_pool_id" {
+  type = string
+}
+
 # GitHub (CodeStar connection)
 variable "codestar_connection_arn" {
   type = string

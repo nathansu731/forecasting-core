@@ -50,3 +50,6 @@ rsconnect/
 /.idea/
 /src/R-amzn2-4.3.3.tar.gz
 terraform/.terraform/providers/registry.terraform.io/hashicorp/aws/
+/src/orchestrator/node_modules/
+/terraform/.terraform/
+/terraform/orchestrator.zip

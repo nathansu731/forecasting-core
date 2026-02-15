@@ -5,11 +5,19 @@ ARG R_VERSION=4.3.3
 
 RUN yum update -y && yum install -y \
     gcc gcc-c++ gcc-gfortran make \
-    libcurl-devel libxml2-devel openssl-devel \
+    libcurl-devel libxml2-devel \
     readline-devel pcre2-devel zlib-devel bzip2 bzip2-devel xz xz-devel \
     tar gzip wget curl which perl perl-core ncurses-devel \
+    pkgconfig libicu-devel \
+    blas-devel lapack-devel \
+    openblas-devel \
+    openssl11 openssl11-devel \
     texinfo git \
     && yum clean all
+
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+ENV FC=/usr/bin/gfortran
 
 WORKDIR /tmp
 
@@ -23,8 +31,44 @@ RUN curl -fsSL https://cran.r-project.org/src/base/R-4/R-${R_VERSION}.tar.gz -o 
 
 # Install R packages here (while compiler is available)
 COPY requirements.R /tmp/requirements.R
-RUN /opt/R/${R_VERSION}/bin/Rscript -e "pkgs <- Filter(nzchar, readLines('/tmp/requirements.R')); \
-    if (length(pkgs)) install.packages(pkgs, repos='https://cloud.r-project.org')"
+RUN cat <<'RSCRIPT' > /tmp/install_packages.R
+options(download.file.method = "libcurl")
+    pkgs <- Filter(nzchar, readLines("/tmp/requirements.R"))
+    deps <- c("Depends", "Imports", "LinkingTo")
+    failed <- c()
+    for (p in pkgs) {
+      message("begin installing package ", p)
+      ok <- TRUE
+      tryCatch({
+        install.packages(p, repos = "https://cloud.r-project.org", dependencies = deps, Ncpus = 1, quiet = TRUE)
+      }, error = function(e) {
+        ok <<- FALSE
+        message("install failed for ", p, ": ", e$message)
+      })
+      if (!(p %in% rownames(installed.packages()))) {
+        ok <- FALSE
+      }
+      if (!ok) failed <- c(failed, p)
+    }
+    if (length(failed)) {
+      message("Missing R packages: ", paste(failed, collapse = ", "))
+      stop("R package install incomplete")
+    }
+    if (!("RcppArmadillo" %in% rownames(installed.packages()))) {
+      message("RcppArmadillo install failed. Showing config.log if present.")
+      if (file.exists("/tmp/RcppArmadillo_config.log")) {
+        cat(readLines("/tmp/RcppArmadillo_config.log"), sep = "\n")
+      }
+    }
+RSCRIPT
+RUN /opt/R/${R_VERSION}/bin/Rscript -e "download.packages('Rcpp', destdir='/tmp', type='source', repos='https://cloud.r-project.org')" \
+    && TAR_FILE=$(ls /tmp/Rcpp_*.tar.gz | head -n 1) \
+    && /opt/R/${R_VERSION}/bin/R CMD INSTALL $TAR_FILE
+RUN RCPPARMA_VER=0.12.4.1.0 \
+    && curl -fsSL https://cran.r-project.org/src/contrib/Archive/RcppArmadillo/RcppArmadillo_${RCPPARMA_VER}.tar.gz -o /tmp/RcppArmadillo_${RCPPARMA_VER}.tar.gz \
+    && /opt/R/${R_VERSION}/bin/R CMD INSTALL /tmp/RcppArmadillo_${RCPPARMA_VER}.tar.gz > /tmp/rcpparmadillo.log 2>&1 \
+    || (echo 'RcppArmadillo install log:' && tail -n 200 /tmp/rcpparmadillo.log && exit 1)
+RUN /opt/R/${R_VERSION}/bin/Rscript /tmp/install_packages.R
 
 # ---- Stage 2: Lambda runtime with R ----
 FROM public.ecr.aws/lambda/provided:al2

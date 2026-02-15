@@ -1,5 +1,6 @@
 schema {
     query: Query
+    mutation: Mutation
 }
 
 # -------------------------------
@@ -15,6 +16,22 @@ type Query {
     getSKUForecasts: GenericResponse!
 
     getMonthlyTotals: GenericResponse!
+
+    getDailyForecasts: GenericResponse!
+
+    getForecastRun(runId: ID!): ForecastRun
+
+    listForecastRuns(limit: Int, nextToken: String): ForecastRunConnection!
+
+    listNotifications(limit: Int, nextToken: String): NotificationConnection!
+
+    getSkuForecastValues: GenericResponse!
+}
+
+type Mutation {
+    startForecastRun(input: StartForecastInput!): ForecastRunResponse!
+
+    markNotificationRead(notificationId: ID!): Notification
 }
 
 # -------------------------------
@@ -25,9 +42,57 @@ type GenericResponse {
     result: AWSJSON
 }
 
+type ForecastRunResponse {
+    status: String!
+    run: ForecastRun
+    message: String
+}
+
+type ForecastRun {
+    runId: ID!
+    tenantId: ID!
+    snapshotId: ID
+    status: String!
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+    s3OutputPrefix: String
+    summary: AWSJSON
+}
+
+type ForecastRunConnection {
+    items: [ForecastRun!]!
+    nextToken: String
+}
+
+type Notification {
+    notificationId: ID!
+    runId: ID!
+    tenantId: ID!
+    status: String!
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+    read: Boolean!
+    summary: AWSJSON
+}
+
+type NotificationConnection {
+    items: [Notification!]!
+    nextToken: String
+}
+
 # -------------------------------
 # Input types
 # -------------------------------
 input ForecastInput {
     input_data: AWSJSON
+}
+
+input StartForecastInput {
+    s3Bucket: String!
+    s3Key: String!
+    originalFilename: String
+    adjustmentsKey: String
+    sku: String
+    store: String
+    frequency: String
 }
