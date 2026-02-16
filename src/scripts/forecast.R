@@ -1,289 +1,31 @@
-# source("/var/task/scripts/utils/error_calculator.R")
-# source("/var/task/scripts/utils/global_model_helper.R")
-# source("/var/task/scripts/models/local_univariate_models.R")
-# source("/var/task/scripts/models/global_models.R")
+source("/var/task/scripts/utils/error_calculator.R")
+source("/var/task/scripts/utils/global_model_helper.R")
+source("/var/task/scripts/models/local_univariate_models.R")
+source("/var/task/scripts/models/global_models.R")
 #
 #
-# # Seasonality values corresponding with the frequencies: 4_seconds, minutely, 10_minutes, 15_minutes, half_hourly, hourly, daily, weekly, monthly, quarterly and yearly
-# # Consider multiple seasonalities for frequencies less than daily
-# SEASONALITY_VALS <- list()
-# SEASONALITY_VALS[[1]] <- c(21600, 151200, 7889400)
-# SEASONALITY_VALS[[2]] <- c(1440, 10080, 525960)
-# SEASONALITY_VALS[[3]] <- c(144, 1008, 52596)
-# SEASONALITY_VALS[[4]] <- c(96, 672, 35064)
-# SEASONALITY_VALS[[5]] <- c(48, 336, 17532)
-# SEASONALITY_VALS[[6]] <- c(24, 168, 8766)
-# SEASONALITY_VALS[[7]] <- 7
-# SEASONALITY_VALS[[8]] <- 365.25/7
-# SEASONALITY_VALS[[9]] <- 12
-# SEASONALITY_VALS[[10]] <- 4
-# SEASONALITY_VALS[[11]] <- 1
-#
-# FREQUENCIES <- c("4_seconds", "minutely", "10_minutes", "15_minutes", "half_hourly", "hourly", "daily", "weekly", "monthly", "quarterly", "yearly")
-#
-# SEASONALITY_MAP <- list()
-#
-# for(f in seq_along(FREQUENCIES)){
-#   SEASONALITY_MAP[[FREQUENCIES[f]]] <- SEASONALITY_VALS[[f]]
-# }
-#
-#
-# # This function performs the fixed horizon evaluation with local models.
-# do_local_forecasting <- function(dataset, dataset_name, method, forecast_horizon, frequency){
-#
-#   if(!is.null(frequency))
-#     seasonality <- SEASONALITY_MAP[[frequency]]
-#   else
-#     seasonality <- 1
-#
-#   train_series_list <- list()
-#   actual_matrix <- matrix(NA, nrow = length(dataset), ncol = forecast_horizon)
-#
-#   start_time <- Sys.time()
-#   print("started Forecasting")
-#
-#   dir.create(file.path("results", "forecasts", fsep = "/"), showWarnings = FALSE, recursive=TRUE)
-#
-#   for(s in 1:length(dataset)){
-#     print(s)
-#     series_data <- as.numeric(unlist(dataset[s], use.names = FALSE))
-#
-#     if(length(series_data) < forecast_horizon)
-#       forecast_horizon <- 1
-#
-#     train_series_list[[s]] <- series_data[1:(length(series_data) - forecast_horizon)]
-#     actual_matrix[s,] <- series_data[(length(series_data) - forecast_horizon + 1):length(series_data)]
-#
-#     series <- forecast:::msts(train_series_list[[s]], seasonal.periods = seasonality)
-#
-#     # Forecasting
-#     current_method_forecasts <- eval(parse(text = paste0("get_", method, "_forecasts(series, forecast_horizon)")))
-#     current_method_forecasts[is.na(current_method_forecasts)] <- 0
-#     write.table(t(current_method_forecasts), file.path("results", "forecasts", paste0(dataset_name, "_", method, ".txt"), fsep = "/"), row.names = FALSE, col.names = FALSE, sep = ",", quote = FALSE, append = TRUE)
-#   }
-#
-#   end_time <- Sys.time()
-#   print("Finished Forecasting")
-#
-#   # Execution time
-#   exec_time <- end_time - start_time
-#   print(exec_time)
-#
-#   # Error calculations
-#   dir.create(file.path("results", "errors", fsep = "/"), showWarnings = FALSE, recursive=TRUE)
-#
-#   forecast_matrix <- as.matrix(read.csv(file.path("results", "forecasts", paste0(dataset_name, "_", method, ".txt"), fsep = "/"), header = F))
-#   calculate_errors(forecast_matrix, actual_matrix, file.path("results", "errors", paste0(dataset_name, "_", method), fsep = "/"))
-# }
-#
-#
-# # This function performs the fixed horizon evaluation with global models.
-# do_global_forecasting <- function(dataset, dataset_name, method, forecast_horizon, lag, frequency){
-#
-#   if(!is.null(frequency))
-#     seasonality <- SEASONALITY_MAP[[frequency]]
-#   else
-#     seasonality <- 1
-#
-#   if(is.null(lag))
-#     lag <- round(seasonality[1]*1.25)
-#
-#   start_time <- Sys.time()
-#   print("started Forecasting")
-#
-#   train_series_list <- list()
-#   actual_matrix <- matrix(NA, nrow = length(dataset), ncol = forecast_horizon)
-#
-#   for(s in 1:length(dataset)){
-#     print(s)
-#     series_data <- as.numeric(unlist(dataset[s], use.names = FALSE))
-#
-#     train_series_list[[s]] <- series_data[1:(length(series_data) - forecast_horizon)]
-#     actual_matrix[s,] <- series_data[(length(series_data) - forecast_horizon + 1):length(series_data)]
-#   }
-#
-#   # Forecasting
-#   forecast_matrix <- start_forecasting(train_series_list, lag, forecast_horizon, method)
-#   forecast_matrix[is.na(forecast_matrix)] <- 0
-#
-#   dir.create(file.path("results", "forecasts", fsep = "/"), showWarnings = FALSE, recursive=TRUE)
-#   write.table(forecast_matrix, file.path("results", "forecasts", paste0(dataset_name, "_", method, ".txt"), fsep = "/"), row.names = FALSE, col.names = FALSE, sep = ",", quote = FALSE, append = TRUE)
-#
-#   end_time <- Sys.time()
-#   print("Finished Forecasting")
-#
-#   # Execution time
-#   exec_time <- end_time - start_time
-#   print(exec_time)
-#
-#   # Error calculations
-#   dir.create(file.path("results", "errors", fsep = "/"), showWarnings = FALSE, recursive=TRUE)
-#   calculate_errors(as.matrix(forecast_matrix), actual_matrix, file.path(BASE_DIR, "results", "errors", paste0(dataset_name, "_", method), fsep = "/"))
-# }
+SEASONALITY_VALS <- list()
+SEASONALITY_VALS[[1]] <- c(21600, 151200, 7889400)
+SEASONALITY_VALS[[2]] <- c(1440, 10080, 525960)
+SEASONALITY_VALS[[3]] <- c(144, 1008, 52596)
+SEASONALITY_VALS[[4]] <- c(96, 672, 35064)
+SEASONALITY_VALS[[5]] <- c(48, 336, 17532)
+SEASONALITY_VALS[[6]] <- c(24, 168, 8766)
+SEASONALITY_VALS[[7]] <- 7
+SEASONALITY_VALS[[8]] <- 365.25/7
+SEASONALITY_VALS[[9]] <- 12
+SEASONALITY_VALS[[10]] <- 4
+SEASONALITY_VALS[[11]] <- 1
 
-#####################  FROM AROSHA
+FREQUENCIES <- c("4_seconds", "minutely", "10_minutes", "15_minutes", "half_hourly", "hourly", "daily", "weekly", "monthly", "quarterly", "yearly")
 
-run_forecast_test <- function(input_data) {
-  message("TEST Forecasting: ", toJSON(input_data, auto_unbox = TRUE))
-  set.seed(123) # reproducible random output
+SEASONALITY_MAP <- list()
 
-  skus <- paste0("SKU_", sprintf("%02d", 1:10))
-  days <- 30
-
-  df <- data.frame(
-    sku = rep(skus, each = days),
-    day = rep(1:days, times = length(skus)),
-    demand = rpois(days * length(skus), lambda = 20) # random demand ~ 20 avg
-  )
-
-  return(df)
+for(f in seq_along(FREQUENCIES)){
+  SEASONALITY_MAP[[FREQUENCIES[f]]] <- SEASONALITY_VALS[[f]]
 }
-
-get_skus_metadata_test <- function() {
-  set.seed(123)
-
-  skus <- paste0("SKU_", sprintf("%02d", 1:10))
-  stores <- c("Melbourne", "Sydney", "Brisbane")
-  forecast_methods <- c("ARIMA", "ETS", "Prophet")
-  abc_classes <- c("A", "B", "C")
-
-  metadata <- lapply(skus, function(sku) {
-    abc_class <- sample(abc_classes, 1)
-    abc_pct <- if (abc_class == "A") runif(1, 70, 80)
-    else if (abc_class == "B") runif(1, 15, 25)
-    else runif(1, 5, 10)
-
-    list(
-      store = sample(stores, 1),
-      skuDesc = paste("Description for", sku),
-      forecastMethod = sample(forecast_methods, 1),
-      ABCclass = abc_class,
-      ABCpercentage = round(abc_pct, 2),
-      isApproved = sample(c(TRUE, FALSE), 1)
-    )
-  })
-
-  names(metadata) <- skus
-  return(metadata)
-}
-
-get_report_summary_test <- function() {
-  set.seed(321)
-
-  report_ids <- paste0("report_", sprintf("%02d", 1:100))
-  dates <- seq(as.Date("2024-01-01"), by = "7 days", length.out = length(report_ids))
-  regions <- c("North America", "Europe", "APAC", "LATAM")
-  products <- c("Product A", "Product B", "Product C", "Product D")
-  methods <- c("ARIMA", "ETS", "Prophet", "XGBoost")
-  statuses <- c("Completed", "In Progress", "Delayed")
-
-  reports <- lapply(seq_along(report_ids), function(i) {
-    revenue_value <- sample(seq(50000, 500000, by = 1000), 1)
-    list(
-      date = format(dates[i], "%Y-%m-%d"),
-      region = sample(regions, 1),
-      product = sample(products, 1),
-      revenue = paste0("$", formatC(revenue_value, format = "d", big.mark = ",")),
-      forecast_method = sample(methods, 1),
-      accuracy = paste0(formatC(runif(1, 85, 99), format = "f", digits = 1), "%"),
-      status = sample(statuses, 1),
-      variance = round(runif(1, -5, 5), 1)
-    )
-  })
-
-  names(reports) <- report_ids
-  return(reports)
-}
-
-get_sku_forecasts_test <- function() {
-  set.seed(456)
-
-  metrics <- c(
-    "budget",
-    "demand",
-    "demandAdjustment",
-    "forecastBaseline",
-    "forecastAdjustment",
-    "previousForecasts",
-    "variance",
-    "revenue",
-    "accuracy",
-    "error",
-    "biasPercent",
-    "bias"
-  )
-
-  months <- format(
-    seq(
-      as.Date("2025-01-01"),
-      by = "month",
-      length.out = 12
-    ),
-    "%m-%Y"
-  )
-
-  # reverse to match 12-2025 → 01-2025
-  months <- rev(months)
-
-  metric_data <- lapply(metrics, function(metric) {
-    values <- sample(-1000:9999, length(months), replace = TRUE)
-    names(values) <- months
-    values_list <- as.list(values)
-    values_list$average <- round(mean(values), 2)
-    values_list
-  })
-
-  names(metric_data) <- metrics
-  return(metric_data)
-}
-
-get_monthly_totals_test <- function() {
-  set.seed(789)
-
-  metrics <- c(
-    "totalRevenue",
-    "newCustomers",
-    "activeAccounts",
-    "growthRate",
-    "operatingExpenses",
-    "netIncome",
-    "grossMargin",
-    "ebitda",
-    "cashFlow",
-    "marketShare",
-    "customerAcquisition",
-    "totalSKUs",
-    "forecastAccuracy",
-    "OutOfStockRisk",
-    "AvgLeadTime"
-  )
-
-  totals <- lapply(metrics, function(metric) {
-    value <- round(runif(1, 10000, 500000), 2)
-    variance <- round(runif(1, -0.3, 0.3), 3)
-
-    status <- if (variance > 0.05) {
-      "positive"
-    } else if (variance < -0.05) {
-      "negative"
-    } else {
-      "stable"
-    }
-
-    list(
-      value = value,
-      variance = variance,
-      status = status
-    )
-  })
-
-  names(totals) <- metrics
-  return(totals)
-}
-
-
-
-##################### / FROM AROSHA
+#
+#
 
 suppressPackageStartupMessages({
   library(jsonlite)
@@ -366,6 +108,175 @@ to_named_map <- function(keys, values) {
   result
 }
 
+get_seasonality <- function(frequency, seasonality_override = NULL) {
+  if (!is.null(seasonality_override) && seasonality_override != "auto") {
+    if (seasonality_override %in% names(SEASONALITY_MAP)) {
+      return(SEASONALITY_MAP[[seasonality_override]])
+    }
+  }
+  if (!is.null(frequency) && frequency %in% names(SEASONALITY_MAP)) {
+    return(SEASONALITY_MAP[[frequency]])
+  }
+  return(1)
+}
+
+VALID_LOCAL_MODELS <- c("arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston")
+
+resolve_model_mode <- function(mode) {
+  mode_value <- tolower(ifelse(is.null(mode), "", mode))
+  if (mode_value %in% c("local", "global")) return(mode_value)
+  "local"
+}
+
+resolve_model_method <- function(method, mode = "local") {
+  if (mode == "global") return("pooled_regression")
+  model_value <- tolower(ifelse(is.null(method), "", method))
+  if (model_value %in% VALID_LOCAL_MODELS) return(model_value)
+  "arima"
+}
+
+get_model_forecast_fn <- function(method) {
+  switch(
+    method,
+    arima = get_arima_forecasts,
+    ets = get_ets_forecasts,
+    ses = get_ses_forecasts,
+    theta = get_theta_forecasts,
+    tbats = get_tbats_forecasts,
+    dhr_arima = get_dhr_arima_forecasts,
+    naive = get_naive_forecasts,
+    snaive = get_snaive_forecasts,
+    croston = get_croston_forecasts,
+    get_arima_forecasts
+  )
+}
+
+forecast_with_model <- function(series_data, method, forecast_horizon, seasonality) {
+  if (length(series_data) < 2) {
+    return(rep(0, forecast_horizon))
+  }
+  series <- forecast:::msts(series_data, seasonal.periods = seasonality)
+  forecast_fn <- get_model_forecast_fn(method)
+  current_method_forecasts <- forecast_fn(series, forecast_horizon)
+  current_method_forecasts[is.na(current_method_forecasts)] <- 0
+  as.numeric(current_method_forecasts)
+}
+
+calculate_validation_metrics <- function(actual, predicted) {
+  if (length(actual) == 0 || length(predicted) == 0 || length(actual) != length(predicted)) {
+    return(NULL)
+  }
+  epsilon <- 0.1
+  abs_err <- abs(predicted - actual)
+  denom <- pmax(0.5 + epsilon, abs(predicted) + abs(actual) + epsilon)
+  smape <- mean((2 * abs_err) / denom, na.rm = TRUE) * 100
+  mae <- mean(abs_err, na.rm = TRUE)
+  rmse <- sqrt(mean((predicted - actual)^2, na.rm = TRUE))
+  list(
+    mae = round(mae, 4),
+    rmse = round(rmse, 4),
+    smape = round(smape, 4)
+  )
+}
+
+evaluate_local_validation <- function(series_list, method, seasonality, horizon) {
+  actual_all <- c()
+  predicted_all <- c()
+  windows_used <- 0
+  series_used <- 0
+  rolling_used <- FALSE
+
+  for (series in series_list) {
+    n <- length(series)
+    if (n < 8) next
+
+    h <- max(1, min(horizon, floor(n / 3)))
+    if (n <= (h + 2)) next
+
+    cutoffs <- c(n - h)
+    if (n >= (h * 3 + 2)) {
+      cutoffs <- seq(n - (h * 3), n - h, by = h)
+      rolling_used <- TRUE
+    }
+
+    series_used <- series_used + 1
+    for (cutoff in cutoffs) {
+      train <- series[1:cutoff]
+      actual <- series[(cutoff + 1):(cutoff + h)]
+      if (length(train) < 2 || length(actual) == 0) next
+      predicted <- forecast_with_model(train, method, length(actual), seasonality)
+      if (length(predicted) != length(actual)) next
+      actual_all <- c(actual_all, as.numeric(actual))
+      predicted_all <- c(predicted_all, as.numeric(predicted))
+      windows_used <- windows_used + 1
+    }
+  }
+
+  metrics <- calculate_validation_metrics(actual_all, predicted_all)
+  if (is.null(metrics)) return(NULL)
+  list(
+    strategy = ifelse(rolling_used, "rolling_window", "holdout"),
+    horizon = horizon,
+    seriesCount = series_used,
+    windows = windows_used,
+    metrics = metrics
+  )
+}
+
+evaluate_global_holdout <- function(series_list, seasonality, horizon) {
+  if (length(series_list) < 3) return(NULL)
+
+  lengths <- sapply(series_list, length)
+  max_h <- floor(min(lengths) / 3)
+  h <- max(1, min(horizon, max_h))
+  if (h < 1) return(NULL)
+
+  train_list <- list()
+  test_list <- list()
+  for (series in series_list) {
+    n <- length(series)
+    if (n <= (h + 2)) next
+    train_list[[length(train_list) + 1]] <- series[1:(n - h)]
+    test_list[[length(test_list) + 1]] <- series[(n - h + 1):n]
+  }
+  if (length(train_list) < 3) return(NULL)
+
+  lag <- if (is.list(seasonality)) round(seasonality[[1]] * 1.25) else round(seasonality * 1.25)
+  forecast_matrix <- tryCatch({
+    start_forecasting(train_list, lag, h, "pooled_regression")
+  }, error = function(e) NULL)
+  if (is.null(forecast_matrix)) return(NULL)
+
+  usable_rows <- min(nrow(forecast_matrix), length(test_list))
+  if (usable_rows == 0) return(NULL)
+
+  forecast_slice <- forecast_matrix[seq_len(usable_rows), seq_len(h), drop = FALSE]
+  predicted_all <- as.numeric(c(t(forecast_slice)))
+  actual_all <- as.numeric(unlist(test_list[seq_len(usable_rows)], use.names = FALSE))
+
+  metrics <- calculate_validation_metrics(actual_all, predicted_all)
+  if (is.null(metrics)) return(NULL)
+  list(
+    strategy = "holdout",
+    horizon = h,
+    seriesCount = usable_rows,
+    windows = usable_rows,
+    metrics = metrics
+  )
+}
+
+approx_bounds <- function(mean_values, series_data) {
+  sigma <- sd(series_data, na.rm = TRUE)
+  if (is.na(sigma) || sigma == 0) sigma <- 1
+  z80 <- 1.2816
+  z95 <- 1.96
+  lower80 <- mean_values - z80 * sigma
+  upper80 <- mean_values + z80 * sigma
+  lower95 <- mean_values - z95 * sigma
+  upper95 <- mean_values + z95 * sigma
+  list(lower80 = lower80, upper80 = upper80, lower95 = lower95, upper95 = upper95)
+}
+
 update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix = NULL, summary = NULL) {
   if (is.null(ddb) || is.null(table) || table == "") {
     message("Skipping DynamoDB status update (DDB not configured)")
@@ -420,13 +331,16 @@ run_forecast_pipeline <- function(event) {
   selected_sku <- unwrap_value(event$sku)
   selected_store <- unwrap_value(event$store)
   selected_frequency <- unwrap_value(event$frequency)
+  selected_model <- unwrap_value(event$model)
+  selected_mode <- unwrap_value(event$mode)
+  selected_seasonality <- unwrap_value(event$seasonality)
 
   if (is.null(tenant_id) || is.null(run_id) || is.null(s3_bucket) || is.null(s3_key)) {
     return(list(status = "error", message = "missing_inputs"))
   }
 
   message("Forecast run env: raw_bucket=", raw_bucket, " artifact_bucket=", artifact_bucket, " forecast_runs_table=", forecast_runs_table)
-  message("Forecast run input: tenant_id=", tenant_id, " run_id=", run_id, " s3_bucket=", s3_bucket, " s3_key=", s3_key, " output_prefix=", s3_output_prefix, " adjustments_key=", adjustments_key)
+  message("Forecast run input: tenant_id=", tenant_id, " run_id=", run_id, " s3_bucket=", s3_bucket, " s3_key=", s3_key, " output_prefix=", s3_output_prefix, " adjustments_key=", adjustments_key, " model=", selected_model, " mode=", selected_mode)
 
   s3 <- paws.storage::s3()
   ddb <- NULL
@@ -525,6 +439,13 @@ run_forecast_pipeline <- function(event) {
 
     df <- df[!is.na(df$date) & !is.na(df$sku), ]
 
+    if (!is.null(selected_sku) && selected_sku != "") {
+      df <- df[df$sku == selected_sku, ]
+    }
+    if (!is.null(selected_store) && selected_store != "") {
+      df <- df[df$location == selected_store, ]
+    }
+
     agg <- aggregate(cbind(quantity, revenue) ~ sku + date, data = df, sum, na.rm = TRUE)
     if (nrow(agg) == 0) {
       stop("No usable data after aggregation")
@@ -534,54 +455,67 @@ run_forecast_pipeline <- function(event) {
     forecast_horizon <- 30
     daily_forecasts <- list()
 
+    model_mode <- resolve_model_mode(selected_mode)
+    model_method <- resolve_model_method(selected_model, model_mode)
+    seasonality <- get_seasonality("daily", selected_seasonality)
+
+    series_list <- list()
+    series_by_sku <- list()
     for (sku in unique_skus) {
       sku_df <- agg[agg$sku == sku, ]
       sku_df <- sku_df[order(sku_df$date), ]
       full_dates <- seq(min(sku_df$date), max(sku_df$date), by = "day")
       series <- merge(data.frame(date = full_dates), sku_df, by = "date", all.x = TRUE)
       series$quantity[is.na(series$quantity)] <- 0
+      series_list[[length(series_list) + 1]] <- series$quantity
+      series_by_sku[[sku]] <- series$quantity
+    }
 
-      ts_data <- ts(series$quantity, frequency = 7)
-      forecast_mean <- rep(mean(series$quantity, na.rm = TRUE), forecast_horizon)
-      lower_80 <- rep(min(series$quantity, na.rm = TRUE), forecast_horizon)
-      upper_80 <- rep(max(series$quantity, na.rm = TRUE), forecast_horizon)
-      lower_95 <- lower_80
-      upper_95 <- upper_80
-
-      fit <- tryCatch({
-        forecast::auto.arima(ts_data)
-      }, error = function(e) NULL)
-
-      if (!is.null(fit)) {
-        fc <- forecast::forecast(fit, h = forecast_horizon, level = c(80, 95))
-        forecast_mean <- as.numeric(fc$mean)
-        lower_80 <- as.numeric(fc$lower[, 1])
-        upper_80 <- as.numeric(fc$upper[, 1])
-        lower_95 <- as.numeric(fc$lower[, 2])
-        upper_95 <- as.numeric(fc$upper[, 2])
+    if (model_mode == "global" && length(unique_skus) >= 3) {
+      lag <- if (is.list(seasonality)) round(seasonality[[1]] * 1.25) else round(seasonality * 1.25)
+      forecast_matrix <- start_forecasting(series_list, lag, forecast_horizon, ifelse(model_method == "pooled_regression", "pooled_regression", "pooled_regression"))
+      for (i in seq_along(unique_skus)) {
+        sku <- unique_skus[i]
+        forecast_mean <- as.numeric(forecast_matrix[i, ])
+        bounds <- approx_bounds(forecast_mean, series_by_sku[[sku]])
+        forecast_dates <- seq(max(agg$date[agg$sku == sku]) + 1, by = "day", length.out = forecast_horizon)
+        daily_forecasts[[sku]] <- data.frame(
+          sku = sku,
+          date = format(forecast_dates, "%Y-%m-%d"),
+          forecast = round(forecast_mean, 2),
+          lower80 = round(bounds$lower80, 2),
+          upper80 = round(bounds$upper80, 2),
+          lower95 = round(bounds$lower95, 2),
+          upper95 = round(bounds$upper95, 2)
+        )
       }
-
-      forecast_dates <- seq(max(series$date) + 1, by = "day", length.out = forecast_horizon)
-      daily_forecasts[[sku]] <- data.frame(
-        sku = sku,
-        date = format(forecast_dates, "%Y-%m-%d"),
-        forecast = round(forecast_mean, 2),
-        lower80 = round(lower_80, 2),
-        upper80 = round(upper_80, 2),
-        lower95 = round(lower_95, 2),
-        upper95 = round(upper_95, 2)
-      )
+    } else {
+      for (sku in unique_skus) {
+        series_data <- series_by_sku[[sku]]
+        forecast_mean <- forecast_with_model(series_data, model_method, forecast_horizon, seasonality)
+        bounds <- approx_bounds(forecast_mean, series_data)
+        forecast_dates <- seq(max(agg$date[agg$sku == sku]) + 1, by = "day", length.out = forecast_horizon)
+        daily_forecasts[[sku]] <- data.frame(
+          sku = sku,
+          date = format(forecast_dates, "%Y-%m-%d"),
+          forecast = round(forecast_mean, 2),
+          lower80 = round(bounds$lower80, 2),
+          upper80 = round(bounds$upper80, 2),
+          lower95 = round(bounds$lower95, 2),
+          upper95 = round(bounds$upper95, 2)
+        )
+      }
     }
 
     daily_forecasts_df <- do.call(rbind, daily_forecasts)
 
     frequency <- if (!is.null(selected_frequency) && selected_frequency != "") selected_frequency else detect_frequency(df$date)
-    freq_value <- switch(
+    validation_horizon <- switch(
       frequency,
       daily = 7,
-      weekly = 52,
-      monthly = 12,
-      quarterly = 4,
+      weekly = 4,
+      monthly = 3,
+      quarterly = 2,
       yearly = 1,
       7
     )
@@ -607,7 +541,7 @@ run_forecast_pipeline <- function(event) {
       sku_meta[[sku]] <- list(
         store = store,
         skuDesc = paste("SKU", sku),
-        forecastMethod = "ARIMA",
+        forecastMethod = if (model_mode == "global") "POOLED_REGRESSION" else toupper(model_method),
         ABCclass = abc_class,
         ABCpercentage = round(share * 100, 2),
         isApproved = TRUE
@@ -615,6 +549,13 @@ run_forecast_pipeline <- function(event) {
     }
 
     sku_forecast_items <- list()
+    model_mode <- resolve_model_mode(selected_mode)
+    model_method <- resolve_model_method(selected_model, model_mode)
+    seasonality <- get_seasonality(frequency, selected_seasonality)
+
+    period_series_list <- list()
+    demand_period_map <- list()
+
     for (sku in unique_skus) {
       sku_df <- agg[agg$sku == sku, ]
       sku_df <- sku_df[order(sku_df$date), ]
@@ -624,26 +565,34 @@ run_forecast_pipeline <- function(event) {
       demand_period <- merge(demand_period, period_starts, by = "period", all.x = TRUE)
       demand_period <- demand_period[order(demand_period$date), ]
 
+      period_series_list[[length(period_series_list) + 1]] <- demand_period$quantity
+      demand_period_map[[sku]] <- demand_period
+    }
+
+    forecast_matrix <- NULL
+    if (model_mode == "global" && length(unique_skus) >= 3) {
+      lag <- if (is.list(seasonality)) round(seasonality[[1]] * 1.25) else round(seasonality * 1.25)
+      forecast_matrix <- start_forecasting(period_series_list, lag, forecast_horizon_adj, "pooled_regression")
+    }
+
+    selected_validation <- if (model_mode == "global") {
+      evaluate_global_holdout(period_series_list, seasonality, validation_horizon)
+    } else {
+      evaluate_local_validation(period_series_list, model_method, seasonality, validation_horizon)
+    }
+    arima_validation <- evaluate_local_validation(period_series_list, "arima", seasonality, validation_horizon)
+
+    for (i in seq_along(unique_skus)) {
+      sku <- unique_skus[i]
+      demand_period <- demand_period_map[[sku]]
       series <- demand_period$quantity
-      ts_data <- ts(series, frequency = freq_value)
-      forecast_mean <- rep(mean(series, na.rm = TRUE), forecast_horizon_adj)
-      lower_80 <- rep(min(series, na.rm = TRUE), forecast_horizon_adj)
-      upper_80 <- rep(max(series, na.rm = TRUE), forecast_horizon_adj)
-      lower_95 <- lower_80
-      upper_95 <- upper_80
 
-      fit <- tryCatch({
-        forecast::auto.arima(ts_data)
-      }, error = function(e) NULL)
-
-      if (!is.null(fit)) {
-        fc <- forecast::forecast(fit, h = forecast_horizon_adj, level = c(80, 95))
-        forecast_mean <- as.numeric(fc$mean)
-        lower_80 <- as.numeric(fc$lower[, 1])
-        upper_80 <- as.numeric(fc$upper[, 1])
-        lower_95 <- as.numeric(fc$lower[, 2])
-        upper_95 <- as.numeric(fc$upper[, 2])
+      if (model_mode == "global" && !is.null(forecast_matrix)) {
+        forecast_mean <- as.numeric(forecast_matrix[i, ])
+      } else {
+        forecast_mean <- forecast_with_model(series, model_method, forecast_horizon_adj, seasonality)
       }
+      bounds <- approx_bounds(forecast_mean, series)
 
       last_period_date <- tail(demand_period$date, 1)
       future_dates <- sequence_periods(last_period_date, frequency, forecast_horizon_adj)
@@ -651,10 +600,10 @@ run_forecast_pipeline <- function(event) {
 
       forecast_map <- to_named_map(forecast_keys, round(forecast_mean, 2))
       demand_map <- forecast_map
-      lower80_map <- to_named_map(forecast_keys, round(lower_80, 2))
-      upper80_map <- to_named_map(forecast_keys, round(upper_80, 2))
-      lower95_map <- to_named_map(forecast_keys, round(lower_95, 2))
-      upper95_map <- to_named_map(forecast_keys, round(upper_95, 2))
+      lower80_map <- to_named_map(forecast_keys, round(bounds$lower80, 2))
+      upper80_map <- to_named_map(forecast_keys, round(bounds$upper80, 2))
+      lower95_map <- to_named_map(forecast_keys, round(bounds$lower95, 2))
+      upper95_map <- to_named_map(forecast_keys, round(bounds$upper95, 2))
 
       store <- if (!is.null(sku_meta[[sku]]$store)) sku_meta[[sku]]$store else "Unknown"
 
@@ -672,7 +621,8 @@ run_forecast_pipeline <- function(event) {
         lower95 = lower95_map,
         upper95 = upper95_map,
         originalDemand = demand_map,
-        originalForecastBaseline = forecast_map
+        originalForecastBaseline = forecast_map,
+        model = if (model_mode == "global") "pooled_regression" else model_method
       )
     }
 
@@ -750,7 +700,28 @@ run_forecast_pipeline <- function(event) {
       totalSkus = total_skus,
       rows = nrow(df),
       dateStart = format(min(df$date), "%Y-%m-%d"),
-      dateEnd = format(max(df$date), "%Y-%m-%d")
+      dateEnd = format(max(df$date), "%Y-%m-%d"),
+      validation = list(
+        frequency = frequency,
+        selectedModel = list(
+          model = if (model_mode == "global") "pooled_regression" else model_method,
+          mode = model_mode,
+          strategy = if (!is.null(selected_validation)) selected_validation$strategy else "none",
+          horizon = if (!is.null(selected_validation)) selected_validation$horizon else validation_horizon,
+          seriesCount = if (!is.null(selected_validation)) selected_validation$seriesCount else 0,
+          windows = if (!is.null(selected_validation)) selected_validation$windows else 0,
+          metrics = if (!is.null(selected_validation)) selected_validation$metrics else list(mae = NA, rmse = NA, smape = NA)
+        ),
+        arimaBaseline = list(
+          model = "arima",
+          mode = "local",
+          strategy = if (!is.null(arima_validation)) arima_validation$strategy else "none",
+          horizon = if (!is.null(arima_validation)) arima_validation$horizon else validation_horizon,
+          seriesCount = if (!is.null(arima_validation)) arima_validation$seriesCount else 0,
+          windows = if (!is.null(arima_validation)) arima_validation$windows else 0,
+          metrics = if (!is.null(arima_validation)) arima_validation$metrics else list(mae = NA, rmse = NA, smape = NA)
+        )
+      )
     )
 
     # Write outputs to S3

@@ -55,6 +55,65 @@ const getTenantId = (event) => {
   return null;
 };
 
+const getTenantSettings = async (tenantId) => {
+  if (!TENANTS_TABLE || !tenantId) return null;
+  const result = await ddb.send(
+    new GetItemCommand({
+      TableName: TENANTS_TABLE,
+      Key: marshall({ tenantId }),
+    })
+  );
+  if (!result.Item) return null;
+  const item = unmarshall(result.Item);
+  return {
+    tenantId: item.tenantId,
+    model: item.defaultModel || null,
+    mode: item.defaultMode || null,
+    seasonality: item.defaultSeasonality || null,
+    updatedAt: item.updatedAt || null,
+  };
+};
+
+const setTenantSettings = async (tenantId, settings) => {
+  if (!TENANTS_TABLE || !tenantId) return null;
+  const updateExpressionParts = [];
+  const expressionAttributeNames = {};
+  const expressionAttributeValues = {
+    ":updatedAt": { S: new Date().toISOString() },
+  };
+
+  if (settings.model) {
+    updateExpressionParts.push("#defaultModel = :defaultModel");
+    expressionAttributeNames["#defaultModel"] = "defaultModel";
+    expressionAttributeValues[":defaultModel"] = { S: settings.model };
+  }
+  if (settings.mode) {
+    updateExpressionParts.push("#defaultMode = :defaultMode");
+    expressionAttributeNames["#defaultMode"] = "defaultMode";
+    expressionAttributeValues[":defaultMode"] = { S: settings.mode };
+  }
+  if (settings.seasonality) {
+    updateExpressionParts.push("#defaultSeasonality = :defaultSeasonality");
+    expressionAttributeNames["#defaultSeasonality"] = "defaultSeasonality";
+    expressionAttributeValues[":defaultSeasonality"] = { S: settings.seasonality };
+  }
+
+  updateExpressionParts.push("#updatedAt = :updatedAt");
+  expressionAttributeNames["#updatedAt"] = "updatedAt";
+
+  await ddb.send(
+    new UpdateItemCommand({
+      TableName: TENANTS_TABLE,
+      Key: marshall({ tenantId }),
+      UpdateExpression: `SET ${updateExpressionParts.join(", ")}`,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
+
+  return getTenantSettings(tenantId);
+};
+
 const nowIso = () => new Date().toISOString();
 
 const randomId = (prefix) => {
@@ -304,10 +363,20 @@ const handleStartForecastRun = async (event) => {
   const sku = input.sku || null;
   const store = input.store || null;
   const frequency = input.frequency || null;
+  const inputModel = input.model || null;
+  const inputMode = input.mode || null;
+  const inputSeasonality = input.seasonality || null;
 
   if (!s3Bucket || !s3Key) {
     return { status: "error", message: "missing_s3", result: {} };
   }
+
+  const tenantDefaults = await getTenantSettings(tenantId);
+  const model = inputModel || tenantDefaults?.model || "arima";
+  const mode = inputMode || tenantDefaults?.mode || "local";
+  const seasonality = inputSeasonality || tenantDefaults?.seasonality || "auto";
+
+  await setTenantSettings(tenantId, { model, mode, seasonality });
 
   const snapshotId = randomId("SNAPSHOT-");
   const runId = randomId("RUN-");
@@ -364,6 +433,9 @@ const handleStartForecastRun = async (event) => {
     sku,
     store,
     frequency,
+    model,
+    mode,
+    seasonality,
     baseS3OutputPrefix,
   };
 
@@ -616,6 +688,17 @@ exports.handler = async (event) => {
         return handleGetResultFile(event, "report_summary.json");
       case "getSkuForecastValues":
         return handleGetResultFile(event, "sku_forecast_values.json");
+      case "getTenantSettings": {
+        const tenantId = getTenantId(event);
+        if (!tenantId) return null;
+        return getTenantSettings(tenantId);
+      }
+      case "setTenantSettings": {
+        const tenantId = getTenantId(event);
+        if (!tenantId) return null;
+        const input = event?.input?.input || event?.arguments?.input || {};
+        return setTenantSettings(tenantId, input);
+      }
       default:
         return { status: "error", message: "unknown_field", result: {} };
     }

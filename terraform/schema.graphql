@@ -26,12 +26,16 @@ type Query {
     listNotifications(limit: Int, nextToken: String): NotificationConnection!
 
     getSkuForecastValues: GenericResponse!
+
+    getTenantSettings: TenantSettings
 }
 
 type Mutation {
     startForecastRun(input: StartForecastInput!): ForecastRunResponse!
 
     markNotificationRead(notificationId: ID!): Notification
+
+    setTenantSettings(input: TenantSettingsInput!): TenantSettings
 }
 
 # -------------------------------
@@ -78,6 +82,20 @@ type Notification {
 type NotificationConnection {
     items: [Notification!]!
     nextToken: String
+}
+
+type TenantSettings {
+    tenantId: ID!
+    model: String
+    mode: String
+    seasonality: String
+    updatedAt: AWSDateTime
+}
+
+input TenantSettingsInput {
+    model: String
+    mode: String
+    seasonality: String
 }
 
 # -------------------------------

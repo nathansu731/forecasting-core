@@ -2,6 +2,7 @@ library(jsonlite)
 
 # Load forecast functions
 source("/var/task/scripts/forecast.R")
+source("/var/task/scripts/forecast-test.R")
 
 handler <- function(event, context) {
 

@@ -3,3 +3,7 @@ httr
 forecast
 paws.storage
 lubridate
+Matrix
+survival
+RcppEigen
+glmnet
