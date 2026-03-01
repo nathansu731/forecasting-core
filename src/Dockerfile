@@ -103,13 +103,12 @@ FROM public.ecr.aws/lambda/provided:al2
 ARG R_VERSION=4.3.3
 
 # Runtime dependencies only (no gcc here)
-RUN yum update -y && yum install -y \
+RUN yum install -y \
     libgfortran \
     libgomp \
     zlib bzip2 xz \
     libcurl \
     libxml2 \
-    openssl \
     pcre pcre2 \
     readline ncurses \
     expat krb5-libs \

@@ -41,3 +41,20 @@ variable "initial_image_uri" {
   type    = string
   default = ""
 }
+
+# Data source worker scheduler (optional; disabled by default)
+variable "data_source_worker_run_due_url" {
+  type    = string
+  default = ""
+}
+
+variable "data_source_worker_cron_expression" {
+  type    = string
+  default = "rate(5 minutes)"
+}
+
+variable "data_source_worker_cron_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}

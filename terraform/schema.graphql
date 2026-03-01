@@ -27,6 +27,8 @@ type Query {
 
     getSkuForecastValues: GenericResponse!
 
+    getReplenishmentSignals: GenericResponse!
+
     getTenantSettings: TenantSettings
 }
 

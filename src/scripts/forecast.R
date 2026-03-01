@@ -1,313 +1,9 @@
-source("/var/task/scripts/utils/error_calculator.R")
-source("/var/task/scripts/utils/global_model_helper.R")
-source("/var/task/scripts/models/local_univariate_models.R")
-source("/var/task/scripts/models/global_models.R")
-#
-#
-SEASONALITY_VALS <- list()
-SEASONALITY_VALS[[1]] <- c(21600, 151200, 7889400)
-SEASONALITY_VALS[[2]] <- c(1440, 10080, 525960)
-SEASONALITY_VALS[[3]] <- c(144, 1008, 52596)
-SEASONALITY_VALS[[4]] <- c(96, 672, 35064)
-SEASONALITY_VALS[[5]] <- c(48, 336, 17532)
-SEASONALITY_VALS[[6]] <- c(24, 168, 8766)
-SEASONALITY_VALS[[7]] <- 7
-SEASONALITY_VALS[[8]] <- 365.25/7
-SEASONALITY_VALS[[9]] <- 12
-SEASONALITY_VALS[[10]] <- 4
-SEASONALITY_VALS[[11]] <- 1
-
-FREQUENCIES <- c("4_seconds", "minutely", "10_minutes", "15_minutes", "half_hourly", "hourly", "daily", "weekly", "monthly", "quarterly", "yearly")
-
-SEASONALITY_MAP <- list()
-
-for(f in seq_along(FREQUENCIES)){
-  SEASONALITY_MAP[[FREQUENCIES[f]]] <- SEASONALITY_VALS[[f]]
-}
-#
-#
-
-suppressPackageStartupMessages({
-  library(jsonlite)
-  library(forecast)
-  library(paws.storage)
-  library(lubridate)
-})
-
-normalize_columns <- function(df) {
-  names(df) <- trimws(tolower(names(df)))
-  if ("isle" %in% names(df) && !("aisle" %in% names(df))) {
-    names(df)[names(df) == "isle"] <- "aisle"
-  }
-  df
-}
-
-safe_bool <- function(x) {
-  value <- tolower(as.character(x))
-  value %in% c("true", "1", "yes", "y")
-}
-
-calc_status <- function(variance) {
-  if (is.na(variance)) return("stable")
-  if (variance > 0.05) return("positive")
-  if (variance < -0.05) return("negative")
-  "stable"
-}
-
-detect_frequency <- function(dates) {
-  unique_dates <- sort(unique(as.Date(dates)))
-  if (length(unique_dates) < 2) return("daily")
-  diffs <- diff(unique_dates)
-  median_days <- median(as.numeric(diffs))
-  if (is.na(median_days) || median_days <= 1) return("daily")
-  if (median_days <= 7) return("weekly")
-  if (median_days <= 31) return("monthly")
-  if (median_days <= 92) return("quarterly")
-  "yearly"
-}
-
-period_key <- function(date, frequency) {
-  d <- as.Date(date)
-  if (frequency == "daily") return(format(d, "%Y-%m-%d"))
-  if (frequency == "weekly") {
-    start <- d - as.integer(format(d, "%u")) + 1
-    return(format(start, "%Y-%m-%d"))
-  }
-  if (frequency == "monthly") return(format(d, "%m-%Y"))
-  if (frequency == "quarterly") {
-    q <- ((as.integer(format(d, "%m")) - 1) %/% 3) + 1
-    return(paste0("Q", q, "-", format(d, "%Y")))
-  }
-  return(format(d, "%Y"))
-}
-
-period_start <- function(date, frequency) {
-  d <- as.Date(date)
-  if (frequency == "daily") return(d)
-  if (frequency == "weekly") return(d - as.integer(format(d, "%u")) + 1)
-  if (frequency == "monthly") return(as.Date(format(d, "%Y-%m-01")))
-  if (frequency == "quarterly") {
-    m <- as.integer(format(d, "%m"))
-    q_start <- (m - 1) %/% 3 * 3 + 1
-    return(as.Date(paste0(format(d, "%Y"), "-", sprintf("%02d", q_start), "-01")))
-  }
-  return(as.Date(paste0(format(d, "%Y"), "-01-01")))
-}
-
-sequence_periods <- function(last_date, frequency, horizon) {
-  if (frequency == "daily") return(seq(last_date + 1, by = "day", length.out = horizon))
-  if (frequency == "weekly") return(seq(last_date + 7, by = "7 days", length.out = horizon))
-  if (frequency == "monthly") return(seq(last_date %m+% months(1), by = "1 month", length.out = horizon))
-  if (frequency == "quarterly") return(seq(last_date %m+% months(3), by = "3 months", length.out = horizon))
-  seq(last_date %m+% years(1), by = "1 year", length.out = horizon)
-}
-
-to_named_map <- function(keys, values) {
-  result <- as.list(values)
-  names(result) <- keys
-  result
-}
-
-get_seasonality <- function(frequency, seasonality_override = NULL) {
-  if (!is.null(seasonality_override) && seasonality_override != "auto") {
-    if (seasonality_override %in% names(SEASONALITY_MAP)) {
-      return(SEASONALITY_MAP[[seasonality_override]])
-    }
-  }
-  if (!is.null(frequency) && frequency %in% names(SEASONALITY_MAP)) {
-    return(SEASONALITY_MAP[[frequency]])
-  }
-  return(1)
-}
-
-VALID_LOCAL_MODELS <- c("arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston")
-
-resolve_model_mode <- function(mode) {
-  mode_value <- tolower(ifelse(is.null(mode), "", mode))
-  if (mode_value %in% c("local", "global")) return(mode_value)
-  "local"
-}
-
-resolve_model_method <- function(method, mode = "local") {
-  if (mode == "global") return("pooled_regression")
-  model_value <- tolower(ifelse(is.null(method), "", method))
-  if (model_value %in% VALID_LOCAL_MODELS) return(model_value)
-  "arima"
-}
-
-get_model_forecast_fn <- function(method) {
-  switch(
-    method,
-    arima = get_arima_forecasts,
-    ets = get_ets_forecasts,
-    ses = get_ses_forecasts,
-    theta = get_theta_forecasts,
-    tbats = get_tbats_forecasts,
-    dhr_arima = get_dhr_arima_forecasts,
-    naive = get_naive_forecasts,
-    snaive = get_snaive_forecasts,
-    croston = get_croston_forecasts,
-    get_arima_forecasts
-  )
-}
-
-forecast_with_model <- function(series_data, method, forecast_horizon, seasonality) {
-  if (length(series_data) < 2) {
-    return(rep(0, forecast_horizon))
-  }
-  series <- forecast:::msts(series_data, seasonal.periods = seasonality)
-  forecast_fn <- get_model_forecast_fn(method)
-  current_method_forecasts <- forecast_fn(series, forecast_horizon)
-  current_method_forecasts[is.na(current_method_forecasts)] <- 0
-  as.numeric(current_method_forecasts)
-}
-
-calculate_validation_metrics <- function(actual, predicted) {
-  if (length(actual) == 0 || length(predicted) == 0 || length(actual) != length(predicted)) {
-    return(NULL)
-  }
-  epsilon <- 0.1
-  abs_err <- abs(predicted - actual)
-  denom <- pmax(0.5 + epsilon, abs(predicted) + abs(actual) + epsilon)
-  smape <- mean((2 * abs_err) / denom, na.rm = TRUE) * 100
-  mae <- mean(abs_err, na.rm = TRUE)
-  rmse <- sqrt(mean((predicted - actual)^2, na.rm = TRUE))
-  list(
-    mae = round(mae, 4),
-    rmse = round(rmse, 4),
-    smape = round(smape, 4)
-  )
-}
-
-evaluate_local_validation <- function(series_list, method, seasonality, horizon) {
-  actual_all <- c()
-  predicted_all <- c()
-  windows_used <- 0
-  series_used <- 0
-  rolling_used <- FALSE
-
-  for (series in series_list) {
-    n <- length(series)
-    if (n < 8) next
-
-    h <- max(1, min(horizon, floor(n / 3)))
-    if (n <= (h + 2)) next
-
-    cutoffs <- c(n - h)
-    if (n >= (h * 3 + 2)) {
-      cutoffs <- seq(n - (h * 3), n - h, by = h)
-      rolling_used <- TRUE
-    }
-
-    series_used <- series_used + 1
-    for (cutoff in cutoffs) {
-      train <- series[1:cutoff]
-      actual <- series[(cutoff + 1):(cutoff + h)]
-      if (length(train) < 2 || length(actual) == 0) next
-      predicted <- forecast_with_model(train, method, length(actual), seasonality)
-      if (length(predicted) != length(actual)) next
-      actual_all <- c(actual_all, as.numeric(actual))
-      predicted_all <- c(predicted_all, as.numeric(predicted))
-      windows_used <- windows_used + 1
-    }
-  }
-
-  metrics <- calculate_validation_metrics(actual_all, predicted_all)
-  if (is.null(metrics)) return(NULL)
-  list(
-    strategy = ifelse(rolling_used, "rolling_window", "holdout"),
-    horizon = horizon,
-    seriesCount = series_used,
-    windows = windows_used,
-    metrics = metrics
-  )
-}
-
-evaluate_global_holdout <- function(series_list, seasonality, horizon) {
-  if (length(series_list) < 3) return(NULL)
-
-  lengths <- sapply(series_list, length)
-  max_h <- floor(min(lengths) / 3)
-  h <- max(1, min(horizon, max_h))
-  if (h < 1) return(NULL)
-
-  train_list <- list()
-  test_list <- list()
-  for (series in series_list) {
-    n <- length(series)
-    if (n <= (h + 2)) next
-    train_list[[length(train_list) + 1]] <- series[1:(n - h)]
-    test_list[[length(test_list) + 1]] <- series[(n - h + 1):n]
-  }
-  if (length(train_list) < 3) return(NULL)
-
-  lag <- if (is.list(seasonality)) round(seasonality[[1]] * 1.25) else round(seasonality * 1.25)
-  forecast_matrix <- tryCatch({
-    start_forecasting(train_list, lag, h, "pooled_regression")
-  }, error = function(e) NULL)
-  if (is.null(forecast_matrix)) return(NULL)
-
-  usable_rows <- min(nrow(forecast_matrix), length(test_list))
-  if (usable_rows == 0) return(NULL)
-
-  forecast_slice <- forecast_matrix[seq_len(usable_rows), seq_len(h), drop = FALSE]
-  predicted_all <- as.numeric(c(t(forecast_slice)))
-  actual_all <- as.numeric(unlist(test_list[seq_len(usable_rows)], use.names = FALSE))
-
-  metrics <- calculate_validation_metrics(actual_all, predicted_all)
-  if (is.null(metrics)) return(NULL)
-  list(
-    strategy = "holdout",
-    horizon = h,
-    seriesCount = usable_rows,
-    windows = usable_rows,
-    metrics = metrics
-  )
-}
-
-approx_bounds <- function(mean_values, series_data) {
-  sigma <- sd(series_data, na.rm = TRUE)
-  if (is.na(sigma) || sigma == 0) sigma <- 1
-  z80 <- 1.2816
-  z95 <- 1.96
-  lower80 <- mean_values - z80 * sigma
-  upper80 <- mean_values + z80 * sigma
-  lower95 <- mean_values - z95 * sigma
-  upper95 <- mean_values + z95 * sigma
-  list(lower80 = lower80, upper80 = upper80, lower95 = lower95, upper95 = upper95)
-}
-
-update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix = NULL, summary = NULL) {
-  if (is.null(ddb) || is.null(table) || table == "") {
-    message("Skipping DynamoDB status update (DDB not configured)")
-    return(invisible(NULL))
-  }
-
-  expr_names <- list("#status" = "status")
-  expr_values <- list(":status" = list(S = status), ":updatedAt" = list(S = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ")))
-  update_expr <- "SET #status = :status, updatedAt = :updatedAt"
-
-  if (!is.null(s3_prefix)) {
-    expr_values[[":prefix"]] <- list(S = s3_prefix)
-    update_expr <- paste(update_expr, ", s3OutputPrefix = :prefix")
-  }
-
-  if (!is.null(summary)) {
-    expr_values[[":summary"]] <- list(S = toJSON(summary, auto_unbox = TRUE))
-    update_expr <- paste(update_expr, ", summary = :summary")
-  }
-
-  ddb$update_item(
-    TableName = table,
-    Key = list(
-      PK = list(S = paste0("TENANT#", tenant_id)),
-      SK = list(S = paste0("RUN#", run_id))
-    ),
-    UpdateExpression = update_expr,
-    ExpressionAttributeNames = expr_names,
-    ExpressionAttributeValues = expr_values
-  )
-}
+source("/var/task/scripts/core/dependencies.R")
+source("/var/task/scripts/core/constants.R")
+source("/var/task/scripts/core/data_prep.R")
+source("/var/task/scripts/core/modeling.R")
+source("/var/task/scripts/core/validation.R")
+source("/var/task/scripts/core/io_state.R")
 
 run_forecast_pipeline <- function(event) {
   raw_bucket <- Sys.getenv("RAW_BUCKET")
@@ -408,7 +104,7 @@ run_forecast_pipeline <- function(event) {
 
       write_json(paste0(s3_output_prefix, "/sku_forecast_values.json"), base_values)
 
-      base_files <- c("daily_forecasts.json", "monthly_forecasts.json", "monthly_totals.json", "metadata.json", "report_summary.json")
+      base_files <- c("daily_forecasts.json", "monthly_forecasts.json", "monthly_totals.json", "metadata.json", "report_summary.json", "replenishment_signals.json")
       for (file in base_files) {
         tryCatch({
           payload <- read_json_from_s3(artifact_bucket, paste0(base_s3_output_prefix, "/", file))
@@ -439,11 +135,30 @@ run_forecast_pipeline <- function(event) {
 
     df <- df[!is.na(df$date) & !is.na(df$sku), ]
 
+    onhand_col <- resolve_column(df, c("onhand", "on_hand", "currentstock", "current_stock", "stockonhand", "stock_on_hand", "stock"))
+    lead_time_col <- resolve_column(df, c("leadtimedays", "lead_time_days", "leadtime", "lead_time", "supplierleaddays", "supplier_lead_days"))
+    safety_stock_col <- resolve_column(df, c("safetystockdays", "safety_stock_days", "safetydays", "safety_days"))
+    reorder_point_col <- resolve_column(df, c("reorderpoint", "reorder_point", "minstock", "min_stock"))
+
+    if (!is.null(onhand_col)) df[[onhand_col]] <- suppressWarnings(as.numeric(df[[onhand_col]]))
+    if (!is.null(lead_time_col)) df[[lead_time_col]] <- suppressWarnings(as.numeric(df[[lead_time_col]]))
+    if (!is.null(safety_stock_col)) df[[safety_stock_col]] <- suppressWarnings(as.numeric(df[[safety_stock_col]]))
+    if (!is.null(reorder_point_col)) df[[reorder_point_col]] <- suppressWarnings(as.numeric(df[[reorder_point_col]]))
+
     if (!is.null(selected_sku) && selected_sku != "") {
       df <- df[df$sku == selected_sku, ]
     }
     if (!is.null(selected_store) && selected_store != "") {
       df <- df[df$location == selected_store, ]
+    }
+
+    extract_latest_value <- function(sku_df, column_name) {
+      if (is.null(column_name) || !(column_name %in% names(sku_df))) return(NA_real_)
+      values <- suppressWarnings(as.numeric(sku_df[[column_name]]))
+      idx <- which(!is.na(values))
+      if (length(idx) == 0) return(NA_real_)
+      ordered <- idx[order(sku_df$date[idx], decreasing = TRUE)]
+      as.numeric(values[ordered[1]])
     }
 
     agg <- aggregate(cbind(quantity, revenue) ~ sku + date, data = df, sum, na.rm = TRUE)
@@ -454,6 +169,17 @@ run_forecast_pipeline <- function(event) {
     unique_skus <- sort(unique(agg$sku))
     forecast_horizon <- 30
     daily_forecasts <- list()
+    inventory_by_sku <- list()
+
+    for (sku in unique_skus) {
+      sku_df_raw <- df[df$sku == sku, ]
+      inventory_by_sku[[sku]] <- list(
+        onHand = extract_latest_value(sku_df_raw, onhand_col),
+        leadTimeDays = extract_latest_value(sku_df_raw, lead_time_col),
+        safetyStockDays = extract_latest_value(sku_df_raw, safety_stock_col),
+        reorderPoint = extract_latest_value(sku_df_raw, reorder_point_col)
+      )
+    }
 
     model_mode <- resolve_model_mode(selected_mode)
     model_method <- resolve_model_method(selected_model, model_mode)
@@ -696,6 +422,92 @@ run_forecast_pipeline <- function(event) {
       growthRate = list(value = round(growth_rate * 100, 2), variance = round(growth_rate, 3), status = calc_status(growth_rate))
     )
 
+    default_lead_days <- list(A = 7, B = 14, C = 21)
+    default_safety_days <- list(A = 4, B = 6, C = 8)
+    default_cover_days <- list(A = 8, B = 14, C = 22)
+
+    replenishment_items <- list()
+    for (sku in unique_skus) {
+      sku_info <- sku_meta[[sku]]
+      abc_class <- if (!is.null(sku_info$ABCclass)) sku_info$ABCclass else "C"
+      if (!(abc_class %in% c("A", "B", "C"))) abc_class <- "C"
+
+      forecast_df <- daily_forecasts[[sku]]
+      demand_values <- pmax(as.numeric(forecast_df$forecast), 0)
+      avg_daily_demand <- if (length(demand_values) > 0) mean(demand_values, na.rm = TRUE) else 0
+      horizon_demand <- if (length(demand_values) > 0) sum(demand_values, na.rm = TRUE) else 0
+
+      inventory <- inventory_by_sku[[sku]]
+      lead_time_days <- as.numeric(inventory$leadTimeDays)
+      safety_stock_days <- as.numeric(inventory$safetyStockDays)
+      reorder_point <- as.numeric(inventory$reorderPoint)
+      on_hand <- as.numeric(inventory$onHand)
+      on_hand_source <- "provided"
+
+      if (is.na(lead_time_days) || lead_time_days <= 0) lead_time_days <- default_lead_days[[abc_class]]
+      if (is.na(safety_stock_days) || safety_stock_days < 0) safety_stock_days <- default_safety_days[[abc_class]]
+      if (is.na(on_hand) || on_hand < 0) {
+        on_hand <- round(avg_daily_demand * default_cover_days[[abc_class]])
+        on_hand_source <- "estimated"
+      }
+
+      if (is.na(reorder_point) || reorder_point < 0) {
+        reorder_point <- round(avg_daily_demand * (lead_time_days + safety_stock_days))
+      }
+
+      days_of_cover <- if (avg_daily_demand > 0) on_hand / avg_daily_demand else NA_real_
+      risk <- "Healthy"
+      predicted_stockout <- NULL
+      reorder_by <- NULL
+      recommended_reorder_qty <- 0
+
+      if (avg_daily_demand > 0) {
+        critical_threshold <- max(3, ceiling(lead_time_days * 0.6))
+        if (days_of_cover <= critical_threshold) {
+          risk <- "Critical"
+        } else if (days_of_cover <= lead_time_days) {
+          risk <- "High"
+        } else if (days_of_cover <= (lead_time_days + safety_stock_days)) {
+          risk <- "Medium"
+        }
+
+        stockout_date <- Sys.Date() + max(1, floor(days_of_cover))
+        predicted_stockout <- format(stockout_date, "%Y-%m-%d")
+        if (risk != "Healthy") {
+          reorder_by <- format(stockout_date - lead_time_days, "%Y-%m-%d")
+        }
+
+        required_units <- (lead_time_days + safety_stock_days) * avg_daily_demand
+        recommended_reorder_qty <- max(0, ceiling(required_units - on_hand))
+      }
+
+      replenishment_items[[length(replenishment_items) + 1]] <- list(
+        sku = sku,
+        store = if (!is.null(sku_info$store)) sku_info$store else "Unknown",
+        skuDesc = if (!is.null(sku_info$skuDesc)) sku_info$skuDesc else paste("SKU", sku),
+        abcClass = abc_class,
+        avgDailyDemand = round(avg_daily_demand, 2),
+        horizonDemand = round(horizon_demand, 2),
+        onHand = round(on_hand, 2),
+        onHandSource = on_hand_source,
+        leadTimeDays = round(lead_time_days, 2),
+        safetyStockDays = round(safety_stock_days, 2),
+        reorderPoint = round(reorder_point, 2),
+        daysOfCover = if (is.na(days_of_cover)) NULL else round(days_of_cover, 2),
+        predictedStockoutDate = predicted_stockout,
+        reorderByDate = reorder_by,
+        recommendedReorderQty = recommended_reorder_qty,
+        risk = risk,
+        confidence = ifelse(on_hand_source == "provided", "high", "medium")
+      )
+    }
+
+    replenishment_signals <- list(
+      generatedAt = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ"),
+      horizonDays = forecast_horizon,
+      items = replenishment_items
+    )
+
     summary <- list(
       totalSkus = total_skus,
       rows = nrow(df),
@@ -735,6 +547,7 @@ run_forecast_pipeline <- function(event) {
     write_json(paste0(s3_output_prefix, "/monthly_totals.json"), monthly_totals)
     write_json(paste0(s3_output_prefix, "/report_summary.json"), summary)
     write_json(paste0(s3_output_prefix, "/sku_forecast_values.json"), sku_forecast_values)
+    write_json(paste0(s3_output_prefix, "/replenishment_signals.json"), replenishment_signals)
 
     update_run_status(ddb, forecast_runs_table, tenant_id, run_id, "DONE", s3_output_prefix, summary)
 
