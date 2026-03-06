@@ -9,11 +9,19 @@ resource "aws_lambda_function" "fn" {
   architectures = ["x86_64"]
   environment {
     variables = {
-      RAW_BUCKET           = aws_s3_bucket.raw.bucket
-      ARTIFACT_BUCKET      = aws_s3_bucket.artifacts.bucket
-      FORECAST_RUNS_TABLE  = aws_dynamodb_table.forecast_runs.name
-      DATA_SNAPSHOTS_TABLE = aws_dynamodb_table.data_snapshots.name
-      NOTIFICATIONS_TABLE  = aws_dynamodb_table.notifications.name
+      RAW_BUCKET                      = aws_s3_bucket.raw.bucket
+      ARTIFACT_BUCKET                 = aws_s3_bucket.artifacts.bucket
+      FORECAST_RUNS_TABLE             = aws_dynamodb_table.forecast_runs.name
+      DATA_SNAPSHOTS_TABLE            = aws_dynamodb_table.data_snapshots.name
+      NOTIFICATIONS_TABLE             = aws_dynamodb_table.notifications.name
+      TENANTS_TABLE                   = aws_dynamodb_table.tenants.name
+      ENTITLEMENTS_TABLE              = aws_dynamodb_table.entitlements.name
+      LLM_USAGE_TABLE                 = aws_dynamodb_table.llm_usage.name
+      ASSISTANT_ENABLED               = tostring(var.assistant_enabled)
+      ASSISTANT_CACHE_TTL_SECONDS     = tostring(var.assistant_cache_ttl_seconds)
+      ASSISTANT_RATE_LIMIT_PER_MINUTE = tostring(var.assistant_rate_limit_per_minute)
+      ASSISTANT_RATE_LIMIT_PER_HOUR   = tostring(var.assistant_rate_limit_per_hour)
+      ASSISTANT_OPENAI_TIMEOUT_MS     = tostring(var.assistant_openai_timeout_ms)
     }
   }
 }
@@ -77,7 +85,8 @@ resource "aws_iam_role_policy" "orchestrator_data_access" {
           aws_dynamodb_table.data_snapshots.arn,
           aws_dynamodb_table.entitlements.arn,
           aws_dynamodb_table.tenants.arn,
-          aws_dynamodb_table.notifications.arn
+          aws_dynamodb_table.notifications.arn,
+          aws_dynamodb_table.llm_usage.arn
         ]
       },
       {
@@ -104,12 +113,22 @@ resource "aws_lambda_function" "orchestrator" {
 
   environment {
     variables = {
-      RAW_BUCKET           = aws_s3_bucket.raw.bucket
-      ARTIFACT_BUCKET      = aws_s3_bucket.artifacts.bucket
-      FORECAST_RUNS_TABLE  = aws_dynamodb_table.forecast_runs.name
-      DATA_SNAPSHOTS_TABLE = aws_dynamodb_table.data_snapshots.name
-      FORECAST_LAMBDA_ARN  = aws_lambda_function.fn.arn
-      NOTIFICATIONS_TABLE  = aws_dynamodb_table.notifications.name
+      RAW_BUCKET                      = aws_s3_bucket.raw.bucket
+      ARTIFACT_BUCKET                 = aws_s3_bucket.artifacts.bucket
+      FORECAST_RUNS_TABLE             = aws_dynamodb_table.forecast_runs.name
+      DATA_SNAPSHOTS_TABLE            = aws_dynamodb_table.data_snapshots.name
+      FORECAST_LAMBDA_ARN             = aws_lambda_function.fn.arn
+      NOTIFICATIONS_TABLE             = aws_dynamodb_table.notifications.name
+      TENANTS_TABLE                   = aws_dynamodb_table.tenants.name
+      ENTITLEMENTS_TABLE              = aws_dynamodb_table.entitlements.name
+      LLM_USAGE_TABLE                 = aws_dynamodb_table.llm_usage.name
+      OPENAI_API_KEY                  = var.openai_api_key
+      OPENAI_MODEL                    = var.openai_model
+      ASSISTANT_ENABLED               = tostring(var.assistant_enabled)
+      ASSISTANT_CACHE_TTL_SECONDS     = tostring(var.assistant_cache_ttl_seconds)
+      ASSISTANT_RATE_LIMIT_PER_MINUTE = tostring(var.assistant_rate_limit_per_minute)
+      ASSISTANT_RATE_LIMIT_PER_HOUR   = tostring(var.assistant_rate_limit_per_hour)
+      ASSISTANT_OPENAI_TIMEOUT_MS     = tostring(var.assistant_openai_timeout_ms)
     }
   }
 }
@@ -191,7 +210,8 @@ resource "aws_iam_role_policy" "lambda_data_access" {
           aws_dynamodb_table.data_snapshots.arn,
           aws_dynamodb_table.entitlements.arn,
           aws_dynamodb_table.tenants.arn,
-          aws_dynamodb_table.notifications.arn
+          aws_dynamodb_table.notifications.arn,
+          aws_dynamodb_table.llm_usage.arn
         ]
       }
     ]

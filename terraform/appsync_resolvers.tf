@@ -422,4 +422,61 @@ $util.toJson($context.result)
 EOF
 }
 
+resource "aws_appsync_resolver" "forecast_assistant" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "forecastAssistant"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "forecastAssistant"
+    },
+    "input": $util.toJson($context.arguments),
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "get_assistant_usage" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getAssistantUsage"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getAssistantUsage"
+    },
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
 # ------------------ /Appsync Resolvers -------------------------

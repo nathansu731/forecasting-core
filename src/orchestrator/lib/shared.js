@@ -15,6 +15,15 @@ const DATA_SNAPSHOTS_TABLE = process.env.DATA_SNAPSHOTS_TABLE || "";
 const FORECAST_LAMBDA_ARN = process.env.FORECAST_LAMBDA_ARN || "";
 const NOTIFICATIONS_TABLE = process.env.NOTIFICATIONS_TABLE || "";
 const TENANTS_TABLE = process.env.TENANTS_TABLE || "";
+const ENTITLEMENTS_TABLE = process.env.ENTITLEMENTS_TABLE || "";
+const LLM_USAGE_TABLE = process.env.LLM_USAGE_TABLE || "";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const ASSISTANT_ENABLED = String(process.env.ASSISTANT_ENABLED || "true").toLowerCase() !== "false";
+const ASSISTANT_CACHE_TTL_SECONDS = Number(process.env.ASSISTANT_CACHE_TTL_SECONDS || "1800");
+const ASSISTANT_RATE_LIMIT_PER_MINUTE = Number(process.env.ASSISTANT_RATE_LIMIT_PER_MINUTE || "10");
+const ASSISTANT_RATE_LIMIT_PER_HOUR = Number(process.env.ASSISTANT_RATE_LIMIT_PER_HOUR || "120");
+const ASSISTANT_OPENAI_TIMEOUT_MS = Number(process.env.ASSISTANT_OPENAI_TIMEOUT_MS || "12000");
 
 const requireEnv = (value, name) => {
   if (!value) {
@@ -60,11 +69,21 @@ const getTenantSettings = async (tenantId) => {
   );
   if (!result.Item) return null;
   const item = unmarshall(result.Item);
+  let assistantSummary = null;
+  if (item.assistantSummary) {
+    try {
+      assistantSummary = typeof item.assistantSummary === "string" ? JSON.parse(item.assistantSummary) : item.assistantSummary;
+    } catch {
+      assistantSummary = null;
+    }
+  }
   return {
     tenantId: item.tenantId,
+    plan: item.plan || item.tier || item.subscriptionPlan || null,
     model: item.defaultModel || null,
     mode: item.defaultMode || null,
     seasonality: item.defaultSeasonality || null,
+    assistantSummary,
     updatedAt: item.updatedAt || null,
   };
 };
@@ -107,6 +126,23 @@ const setTenantSettings = async (tenantId, settings) => {
   );
 
   return getTenantSettings(tenantId);
+};
+
+const setTenantAssistantSummary = async (tenantId, payload) => {
+  if (!TENANTS_TABLE || !tenantId) return null;
+  const now = new Date().toISOString();
+  await ddb.send(
+    new UpdateItemCommand({
+      TableName: TENANTS_TABLE,
+      Key: marshall({ tenantId }),
+      UpdateExpression: "SET assistantSummary = :assistantSummary, updatedAt = :updatedAt",
+      ExpressionAttributeValues: marshall({
+        ":assistantSummary": JSON.stringify(payload || {}),
+        ":updatedAt": now,
+      }),
+    })
+  );
+  return now;
 };
 
 const nowIso = () => new Date().toISOString();
@@ -380,6 +416,7 @@ module.exports = {
   marshall,
   unmarshall,
   PutItemCommand,
+  GetItemCommand,
   QueryCommand,
   UpdateItemCommand,
   InvokeCommand,
@@ -390,10 +427,20 @@ module.exports = {
   FORECAST_LAMBDA_ARN,
   NOTIFICATIONS_TABLE,
   TENANTS_TABLE,
+  ENTITLEMENTS_TABLE,
+  LLM_USAGE_TABLE,
+  OPENAI_API_KEY,
+  OPENAI_MODEL,
+  ASSISTANT_ENABLED,
+  ASSISTANT_CACHE_TTL_SECONDS,
+  ASSISTANT_RATE_LIMIT_PER_MINUTE,
+  ASSISTANT_RATE_LIMIT_PER_HOUR,
+  ASSISTANT_OPENAI_TIMEOUT_MS,
   requireEnv,
   getTenantId,
   getTenantSettings,
   setTenantSettings,
+  setTenantAssistantSummary,
   nowIso,
   randomId,
   getLatestRun,

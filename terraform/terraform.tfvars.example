@@ -1,0 +1,26 @@
+# Copy this file to terraform.tfvars for local use.
+# Do NOT commit terraform.tfvars with real secrets.
+
+codestar_connection_arn = "arn:aws:codeconnections:<region>:<account_id>:connection/<connection_id>"
+github_owner            = "<github_owner>"
+github_repo             = "forecasting-core"
+github_branch           = "main"
+project_name            = "forecasting"
+region                  = "ap-southeast-2"
+cognito_user_pool_id    = "<cognito_user_pool_id>"
+lambda_function_name    = "forecasting-core-fn"
+initial_image_uri       = "<account_id>.dkr.ecr.<region>.amazonaws.com/forecasting-core:latest"
+
+# Optional: schedule inventory dashboard data-source due sync worker.
+data_source_worker_run_due_url     = ""
+data_source_worker_cron_expression = "rate(5 minutes)"
+data_source_worker_cron_token      = ""
+
+# LLM settings
+openai_api_key                    = ""
+openai_model                      = "gpt-4o-mini"
+assistant_enabled                 = true
+assistant_cache_ttl_seconds       = 1800
+assistant_rate_limit_per_minute   = 10
+assistant_rate_limit_per_hour     = 120
+assistant_openai_timeout_ms       = 12000

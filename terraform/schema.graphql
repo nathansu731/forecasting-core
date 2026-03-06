@@ -30,6 +30,10 @@ type Query {
     getReplenishmentSignals: GenericResponse!
 
     getTenantSettings: TenantSettings
+
+    forecastAssistant(input: ForecastAssistantInput!): ForecastAssistantResponse!
+
+    getAssistantUsage: AssistantUsage!
 }
 
 type Mutation {
@@ -115,4 +119,48 @@ input StartForecastInput {
     sku: String
     store: String
     frequency: String
+    model: String
+    mode: String
+    seasonality: String
+}
+
+input ForecastAssistantInput {
+    command: String!
+    runId: ID
+    contextMode: String
+}
+
+type ForecastAssistantAction {
+    id: ID!
+    label: String!
+    route: String
+    kind: String!
+}
+
+type ForecastAssistantStep {
+    id: ID!
+    title: String!
+    description: String!
+    status: String!
+    action: ForecastAssistantAction
+}
+
+type ForecastAssistantResponse {
+    status: String!
+    intent: String!
+    assistantText: String!
+    context: AWSJSON
+    checklist: [String!]!
+    suggestedPrompts: [String!]!
+    steps: [ForecastAssistantStep!]!
+}
+
+type AssistantUsage {
+    monthKey: String!
+    requestsUsed: Int!
+    requestsLimit: Int!
+    tokensUsed: Int!
+    tokensLimit: Int!
+    rateMinuteLimit: Int!
+    rateHourLimit: Int!
 }
