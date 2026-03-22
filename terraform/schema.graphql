@@ -1,6 +1,7 @@
 schema {
     query: Query
     mutation: Mutation
+    subscription: Subscription
 }
 
 # -------------------------------
@@ -42,6 +43,13 @@ type Mutation {
     markNotificationRead(notificationId: ID!): Notification
 
     setTenantSettings(input: TenantSettingsInput!): TenantSettings
+
+    updateForecastRunStatus(input: UpdateForecastRunStatusInput!): ForecastRun
+}
+
+type Subscription {
+    onForecastRunUpdated(tenantId: ID!): ForecastRun
+    @aws_subscribe(mutations: ["updateForecastRunStatus"])
 }
 
 # -------------------------------
@@ -122,6 +130,14 @@ input StartForecastInput {
     model: String
     mode: String
     seasonality: String
+}
+
+input UpdateForecastRunStatusInput {
+    tenantId: ID!
+    runId: ID!
+    status: String!
+    s3OutputPrefix: String
+    summaryJson: String
 }
 
 input ForecastAssistantInput {

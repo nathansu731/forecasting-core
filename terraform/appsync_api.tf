@@ -11,6 +11,15 @@ resource "aws_appsync_graphql_api" "api" {
 
   xray_enabled = true
   schema       = file("${path.module}/schema.graphql")
+
+  additional_authentication_provider {
+    authentication_type = "API_KEY"
+  }
+}
+
+resource "aws_appsync_api_key" "lambda_status_updates" {
+  api_id  = aws_appsync_graphql_api.api.id
+  expires = timeadd(timestamp(), "8760h")
 }
 
 # Lambda datasource

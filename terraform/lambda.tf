@@ -17,6 +17,8 @@ resource "aws_lambda_function" "fn" {
       TENANTS_TABLE                   = aws_dynamodb_table.tenants.name
       ENTITLEMENTS_TABLE              = aws_dynamodb_table.entitlements.name
       LLM_USAGE_TABLE                 = aws_dynamodb_table.llm_usage.name
+      APPSYNC_API_URL                 = aws_appsync_graphql_api.api.uris["GRAPHQL"]
+      APPSYNC_API_KEY                 = aws_appsync_api_key.lambda_status_updates.key
       ASSISTANT_ENABLED               = tostring(var.assistant_enabled)
       ASSISTANT_CACHE_TTL_SECONDS     = tostring(var.assistant_cache_ttl_seconds)
       ASSISTANT_RATE_LIMIT_PER_MINUTE = tostring(var.assistant_rate_limit_per_minute)

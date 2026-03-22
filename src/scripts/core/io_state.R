@@ -28,4 +28,42 @@ update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix =
     ExpressionAttributeNames = expr_names,
     ExpressionAttributeValues = expr_values
   )
+
+  appsync_url <- Sys.getenv("APPSYNC_API_URL")
+  appsync_key <- Sys.getenv("APPSYNC_API_KEY")
+  if (appsync_url != "" && appsync_key != "") {
+    summary_json <- NULL
+    if (!is.null(summary)) {
+      summary_json <- toJSON(summary, auto_unbox = TRUE)
+    }
+    mutation <- "mutation UpdateForecastRunStatus($input: UpdateForecastRunStatusInput!) { updateForecastRunStatus(input: $input) { runId tenantId status updatedAt } }"
+    payload <- list(
+      query = mutation,
+      variables = list(
+        input = list(
+          tenantId = tenant_id,
+          runId = run_id,
+          status = status,
+          s3OutputPrefix = s3_prefix,
+          summaryJson = summary_json
+        )
+      )
+    )
+    tryCatch(
+      {
+        httr::POST(
+          url = appsync_url,
+          httr::add_headers(
+            `Content-Type` = "application/json",
+            `x-api-key` = appsync_key
+          ),
+          body = payload,
+          encode = "json"
+        )
+      },
+      error = function(e) {
+        message("Skipping AppSync subscription update: ", e$message)
+      }
+    )
+  }
 }

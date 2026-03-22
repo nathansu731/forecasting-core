@@ -815,6 +815,33 @@ const handleMarkNotificationRead = async (event) => {
   return normalizeNotification(result.Attributes ? unmarshall(result.Attributes) : null);
 };
 
+const handleUpdateForecastRunStatus = async (event) => {
+  const input = event?.input?.input || event?.arguments?.input || {};
+  const tenantId = String(input?.tenantId || "").trim();
+  const runId = String(input?.runId || "").trim();
+  const status = String(input?.status || "").trim().toUpperCase();
+  const s3OutputPrefix = typeof input?.s3OutputPrefix === "string" ? input.s3OutputPrefix : null;
+  const summaryJson = typeof input?.summaryJson === "string" ? input.summaryJson : "";
+
+  if (!tenantId || !runId || !status) return null;
+
+  let summary = null;
+  if (summaryJson) {
+    try {
+      summary = JSON.parse(summaryJson);
+    } catch {
+      summary = null;
+    }
+  }
+
+  await updateRunStatus(tenantId, runId, status, summary);
+  const item = await getRunById(tenantId, runId);
+  const normalized = normalizeRun(item);
+  if (!normalized) return null;
+  if (s3OutputPrefix && !normalized.s3OutputPrefix) normalized.s3OutputPrefix = s3OutputPrefix;
+  return normalized;
+};
+
 const handleForecastAssistant = async (event) => {
   const tenantId = getTenantId(event);
   if (!tenantId) {
@@ -1080,6 +1107,8 @@ const dispatchField = async (fieldName, event) => {
       return handleListNotifications(event);
     case "markNotificationRead":
       return handleMarkNotificationRead(event);
+    case "updateForecastRunStatus":
+      return handleUpdateForecastRunStatus(event);
     case "getSKUsMetadata":
       return handleGetResultFile(event, "metadata.json");
     case "getSKUForecasts":

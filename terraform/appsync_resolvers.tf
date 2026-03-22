@@ -422,6 +422,35 @@ $util.toJson($context.result)
 EOF
 }
 
+resource "aws_appsync_resolver" "update_forecast_run_status" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Mutation"
+  field       = "updateForecastRunStatus"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "updateForecastRunStatus"
+    },
+    "input": $util.toJson($context.arguments),
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
 resource "aws_appsync_resolver" "forecast_assistant" {
   api_id      = aws_appsync_graphql_api.api.id
   type        = "Query"
