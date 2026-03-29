@@ -365,6 +365,62 @@ $util.toJson($context.result)
 EOF
 }
 
+resource "aws_appsync_resolver" "mark_all_notifications_read" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Mutation"
+  field       = "markAllNotificationsRead"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "markAllNotificationsRead"
+    },
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "clear_completed_notifications" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Mutation"
+  field       = "clearCompletedNotifications"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "clearCompletedNotifications"
+    },
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
 resource "aws_appsync_resolver" "get_tenant_settings" {
   api_id      = aws_appsync_graphql_api.api.id
   type        = "Query"

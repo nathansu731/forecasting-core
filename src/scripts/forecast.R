@@ -30,6 +30,9 @@ run_forecast_pipeline <- function(event) {
   selected_model <- unwrap_value(event$model)
   selected_mode <- unwrap_value(event$mode)
   selected_seasonality <- unwrap_value(event$seasonality)
+  input_date_format <- unwrap_value(event$dateFormat)
+  input_target_variable <- unwrap_value(event$targetVariable)
+  input_price_column <- unwrap_value(event$priceColumnName)
 
   if (is.null(tenant_id) || is.null(run_id) || is.null(s3_bucket) || is.null(s3_key)) {
     return(list(status = "error", message = "missing_inputs"))
@@ -121,15 +124,26 @@ run_forecast_pipeline <- function(event) {
     df <- read.csv(text = raw_text, stringsAsFactors = FALSE)
     df <- normalize_columns(df)
 
-    required_cols <- c("date", "sku", "quantity", "location", "price", "isholiday", "promotion", "aisle")
+    requested_target <- tolower(trimws(ifelse(is.null(input_target_variable) || input_target_variable == "", "quantity", as.character(input_target_variable))))
+    requested_price <- tolower(trimws(ifelse(is.null(input_price_column) || input_price_column == "", "price", as.character(input_price_column))))
+    key_map <- setNames(names(df), vapply(names(df), normalize_column_key, character(1)))
+    target_key <- normalize_column_key(requested_target)
+    price_key <- normalize_column_key(requested_price)
+    target_column <- if (target_key %in% names(key_map)) key_map[[target_key]] else NULL
+    price_column <- if (price_key %in% names(key_map)) key_map[[price_key]] else NULL
+    if (is.null(target_column)) target_column <- requested_target
+    if (is.null(price_column)) price_column <- requested_price
+    selected_date_format <- ifelse(is.null(input_date_format) || input_date_format == "", "dd/mm/yyyy", as.character(input_date_format))
+
+    required_cols <- c("date", "sku", "location", "isholiday", "promotion", "aisle", target_column, price_column)
     missing_cols <- setdiff(required_cols, names(df))
     if (length(missing_cols) > 0) {
       stop(paste("Missing columns:", paste(missing_cols, collapse = ", ")))
     }
 
-    df$date <- as.Date(df$date)
-    df$quantity <- as.numeric(df$quantity)
-    df$price <- as.numeric(df$price)
+    df$date <- parse_dates_by_format(df$date, selected_date_format)
+    df$quantity <- suppressWarnings(as.numeric(df[[target_column]]))
+    df$price <- suppressWarnings(as.numeric(df[[price_column]]))
     df$isholiday <- safe_bool(df$isholiday)
     df$revenue <- df$quantity * df$price
 
@@ -387,7 +401,12 @@ run_forecast_pipeline <- function(event) {
       }),
       month_keys
     )
-    monthly_revenue <- aggregate(revenue ~ month_key, data = transform(agg, month_key = format(date, "%m-%Y")), sum, na.rm = TRUE)
+    monthly_revenue <- aggregate(
+      revenue ~ month_key + month_start,
+      data = transform(agg, month_key = format(date, "%m-%Y"), month_start = as.Date(format(date, "%Y-%m-01"))),
+      sum,
+      na.rm = TRUE
+    )
     revenue_map <- setNames(monthly_revenue$revenue, monthly_revenue$month_key)
 
     monthly_forecasts <- list(
@@ -404,23 +423,14 @@ run_forecast_pipeline <- function(event) {
     # Monthly totals for overview
     total_revenue_value <- round(sum(df$revenue, na.rm = TRUE), 2)
     total_skus <- length(unique_skus)
-    locations <- unique(df$location)
-    active_accounts <- length(locations)
     month_revenue <- monthly_revenue
     growth_rate <- 0
     if (nrow(month_revenue) >= 2) {
-      sorted <- month_revenue[order(month_revenue$month_key), ]
+      sorted <- month_revenue[order(month_revenue$month_start), ]
       last <- tail(sorted$revenue, 1)
       prev <- tail(sorted$revenue, 2)[1]
       if (prev != 0) growth_rate <- (last - prev) / prev
     }
-
-    monthly_totals <- list(
-      totalRevenue = list(value = total_revenue_value, variance = round(growth_rate, 3), status = calc_status(growth_rate)),
-      newCustomers = list(value = total_skus, variance = 0.01, status = "positive"),
-      activeAccounts = list(value = active_accounts, variance = 0.0, status = "stable"),
-      growthRate = list(value = round(growth_rate * 100, 2), variance = round(growth_rate, 3), status = calc_status(growth_rate))
-    )
 
     default_lead_days <- list(A = 7, B = 14, C = 21)
     default_safety_days <- list(A = 4, B = 6, C = 8)
@@ -506,6 +516,27 @@ run_forecast_pipeline <- function(event) {
       generatedAt = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ"),
       horizonDays = forecast_horizon,
       items = replenishment_items
+    )
+
+    at_risk_count <- length(Filter(function(item) {
+      !is.null(item$risk) && (item$risk == "Critical" || item$risk == "High")
+    }, replenishment_items))
+    at_risk_rate <- if (total_skus > 0) -(at_risk_count / total_skus) else 0
+
+    selected_smape <- if (!is.null(selected_validation$metrics$smape)) as.numeric(selected_validation$metrics$smape) else NA_real_
+    arima_smape <- if (!is.null(arima_validation$metrics$smape)) as.numeric(arima_validation$metrics$smape) else NA_real_
+    forecast_accuracy_value <- if (!is.na(selected_smape)) round(pmax(0, 100 - selected_smape), 2) else 0
+    accuracy_delta <- if (!is.na(selected_smape) && !is.na(arima_smape) && arima_smape != 0) {
+      (arima_smape - selected_smape) / abs(arima_smape)
+    } else {
+      0
+    }
+
+    monthly_totals <- list(
+      totalRevenue = list(value = total_revenue_value, variance = round(growth_rate, 3), status = calc_status(growth_rate)),
+      stockoutRiskSkus = list(value = at_risk_count, variance = round(at_risk_rate, 3), status = calc_status(at_risk_rate)),
+      forecastAccuracy = list(value = forecast_accuracy_value, variance = round(accuracy_delta, 3), status = calc_status(accuracy_delta)),
+      growthRate = list(value = round(growth_rate * 100, 2), variance = round(growth_rate, 3), status = calc_status(growth_rate))
     )
 
     summary <- list(

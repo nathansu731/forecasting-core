@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { DynamoDBClient, PutItemCommand, QueryCommand, GetItemCommand, UpdateItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, PutItemCommand, QueryCommand, GetItemCommand, UpdateItemCommand, DeleteItemCommand } = require("@aws-sdk/client-dynamodb");
 const { LambdaClient, InvokeCommand } = require("@aws-sdk/client-lambda");
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { marshall, unmarshall } = require("@aws-sdk/util-dynamodb");
@@ -83,6 +83,9 @@ const getTenantSettings = async (tenantId) => {
     model: item.defaultModel || null,
     mode: item.defaultMode || null,
     seasonality: item.defaultSeasonality || null,
+    dateFormat: item.defaultDateFormat || null,
+    targetVariable: item.defaultTargetVariable || null,
+    priceColumnName: item.defaultPriceColumnName || null,
     assistantSummary,
     updatedAt: item.updatedAt || null,
   };
@@ -110,6 +113,21 @@ const setTenantSettings = async (tenantId, settings) => {
     updateExpressionParts.push("#defaultSeasonality = :defaultSeasonality");
     expressionAttributeNames["#defaultSeasonality"] = "defaultSeasonality";
     expressionAttributeValues[":defaultSeasonality"] = { S: settings.seasonality };
+  }
+  if (settings.dateFormat) {
+    updateExpressionParts.push("#defaultDateFormat = :defaultDateFormat");
+    expressionAttributeNames["#defaultDateFormat"] = "defaultDateFormat";
+    expressionAttributeValues[":defaultDateFormat"] = { S: settings.dateFormat };
+  }
+  if (settings.targetVariable) {
+    updateExpressionParts.push("#defaultTargetVariable = :defaultTargetVariable");
+    expressionAttributeNames["#defaultTargetVariable"] = "defaultTargetVariable";
+    expressionAttributeValues[":defaultTargetVariable"] = { S: settings.targetVariable };
+  }
+  if (settings.priceColumnName) {
+    updateExpressionParts.push("#defaultPriceColumnName = :defaultPriceColumnName");
+    expressionAttributeNames["#defaultPriceColumnName"] = "defaultPriceColumnName";
+    expressionAttributeValues[":defaultPriceColumnName"] = { S: settings.priceColumnName };
   }
 
   updateExpressionParts.push("#updatedAt = :updatedAt");
@@ -419,6 +437,7 @@ module.exports = {
   GetItemCommand,
   QueryCommand,
   UpdateItemCommand,
+  DeleteItemCommand,
   InvokeCommand,
   RAW_BUCKET,
   ARTIFACT_BUCKET,

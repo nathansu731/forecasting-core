@@ -6,6 +6,27 @@ normalize_columns <- function(df) {
   df
 }
 
+normalize_column_key <- function(value) {
+  key <- tolower(trimws(as.character(value)))
+  gsub("[^a-z0-9]+", "", key)
+}
+
+parse_dates_by_format <- function(values, date_format) {
+  format_key <- normalize_column_key(ifelse(is.null(date_format) || date_format == "", "dd/mm/yyyy", date_format))
+  format_map <- list(
+    "ddmmyyyy" = "%d/%m/%Y",
+    "mmddyyyy" = "%m/%d/%Y",
+    "yyyymmdd" = "%Y-%m-%d"
+  )
+
+  fmt <- format_map[[format_key]]
+  parsed <- if (!is.null(fmt)) as.Date(values, format = fmt) else as.Date(values)
+  if (all(is.na(parsed))) {
+    parsed <- as.Date(values, tryFormats = c("%d/%m/%Y", "%m/%d/%Y", "%Y-%m-%d", "%Y/%m/%d"))
+  }
+  parsed
+}
+
 safe_bool <- function(x) {
   value <- tolower(as.character(x))
   value %in% c("true", "1", "yes", "y")

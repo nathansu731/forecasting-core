@@ -41,6 +41,8 @@ type Mutation {
     startForecastRun(input: StartForecastInput!): ForecastRunResponse!
 
     markNotificationRead(notificationId: ID!): Notification
+    markAllNotificationsRead: NotificationActionResult!
+    clearCompletedNotifications: NotificationActionResult!
 
     setTenantSettings(input: TenantSettingsInput!): TenantSettings
 
@@ -98,11 +100,18 @@ type NotificationConnection {
     nextToken: String
 }
 
+type NotificationActionResult {
+    affectedCount: Int!
+}
+
 type TenantSettings {
     tenantId: ID!
     model: String
     mode: String
     seasonality: String
+    dateFormat: String
+    targetVariable: String
+    priceColumnName: String
     updatedAt: AWSDateTime
 }
 
@@ -110,6 +119,9 @@ input TenantSettingsInput {
     model: String
     mode: String
     seasonality: String
+    dateFormat: String
+    targetVariable: String
+    priceColumnName: String
 }
 
 # -------------------------------
@@ -130,6 +142,9 @@ input StartForecastInput {
     model: String
     mode: String
     seasonality: String
+    dateFormat: String
+    targetVariable: String
+    priceColumnName: String
 }
 
 input UpdateForecastRunStatusInput {

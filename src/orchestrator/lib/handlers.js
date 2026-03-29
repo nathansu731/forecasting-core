@@ -9,6 +9,7 @@ const {
   GetItemCommand,
   QueryCommand,
   UpdateItemCommand,
+  DeleteItemCommand,
   InvokeCommand,
   RAW_BUCKET,
   ARTIFACT_BUCKET,
@@ -259,6 +260,26 @@ const normalizePlan = (value) => {
   if (plan.includes("professional") || plan.includes("pro")) return "professional";
   if (plan.includes("core")) return "core";
   return "free";
+};
+
+const PLAN_ALLOWED_MODELS = {
+  free: ["arima"],
+  core: ["arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston"],
+  professional: ["arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston", "pooled_regression"],
+};
+
+const normalizeRequestedMode = (value, plan) => {
+  const mode = String(value || "").toLowerCase().trim();
+  if (mode === "global" && plan === "professional") return "global";
+  return "local";
+};
+
+const normalizeRequestedModel = (value, plan, mode) => {
+  if (mode === "global") return "pooled_regression";
+  const requested = String(value || "").toLowerCase().trim();
+  const allowed = PLAN_ALLOWED_MODELS[plan] || PLAN_ALLOWED_MODELS.free;
+  if (allowed.includes(requested)) return requested;
+  return allowed[0] || "arima";
 };
 
 const extractNumber = (value, fallback) => {
@@ -566,17 +587,26 @@ const handleStartForecastRun = async (event) => {
   const inputModel = input.model || null;
   const inputMode = input.mode || null;
   const inputSeasonality = input.seasonality || null;
+  const inputDateFormat = input.dateFormat || null;
+  const inputTargetVariable = input.targetVariable || null;
+  const inputPriceColumnName = input.priceColumnName || null;
 
   if (!s3Bucket || !s3Key) {
     return { status: "error", message: "missing_s3", result: {} };
   }
 
   const tenantDefaults = await getTenantSettings(tenantId);
-  const model = inputModel || tenantDefaults?.model || "arima";
-  const mode = inputMode || tenantDefaults?.mode || "local";
+  const { plan } = await getTenantCaps(tenantId);
+  const requestedMode = inputMode || tenantDefaults?.mode || "local";
+  const mode = normalizeRequestedMode(requestedMode, plan);
+  const requestedModel = inputModel || tenantDefaults?.model || "arima";
+  const model = normalizeRequestedModel(requestedModel, plan, mode);
   const seasonality = inputSeasonality || tenantDefaults?.seasonality || "auto";
+  const dateFormat = inputDateFormat || tenantDefaults?.dateFormat || "dd/mm/yyyy";
+  const targetVariable = inputTargetVariable || tenantDefaults?.targetVariable || "quantity";
+  const priceColumnName = inputPriceColumnName || tenantDefaults?.priceColumnName || "price";
 
-  await setTenantSettings(tenantId, { model, mode, seasonality });
+  await setTenantSettings(tenantId, { model, mode, seasonality, dateFormat, targetVariable, priceColumnName });
 
   const snapshotId = randomId("SNAPSHOT-");
   const runId = randomId("RUN-");
@@ -636,6 +666,9 @@ const handleStartForecastRun = async (event) => {
     model,
     mode,
     seasonality,
+    dateFormat,
+    targetVariable,
+    priceColumnName,
     baseS3OutputPrefix,
   };
 
@@ -813,6 +846,89 @@ const handleMarkNotificationRead = async (event) => {
   );
 
   return normalizeNotification(result.Attributes ? unmarshall(result.Attributes) : null);
+};
+
+const listTenantNotificationItems = async (tenantId) => {
+  const items = [];
+  let cursor = null;
+
+  do {
+    const result = await ddb.send(
+      new QueryCommand({
+        TableName: NOTIFICATIONS_TABLE,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: marshall({
+          ":pk": `TENANT#${tenantId}`,
+          ":sk": "RUN#",
+        }),
+        ExclusiveStartKey: cursor || undefined,
+      })
+    );
+
+    for (const item of result.Items || []) {
+      items.push(unmarshall(item));
+    }
+    cursor = result.LastEvaluatedKey || null;
+  } while (cursor);
+
+  return items;
+};
+
+const handleMarkAllNotificationsRead = async (event) => {
+  const tenantId = getTenantId(event);
+  if (!tenantId || !NOTIFICATIONS_TABLE) return { affectedCount: 0 };
+
+  const items = await listTenantNotificationItems(tenantId);
+  const unread = items.filter((item) => !item.read);
+  const updatedAt = new Date().toISOString();
+
+  await Promise.all(
+    unread.map((item) =>
+      ddb.send(
+        new UpdateItemCommand({
+          TableName: NOTIFICATIONS_TABLE,
+          Key: marshall({
+            PK: `TENANT#${tenantId}`,
+            SK: String(item.SK || ""),
+          }),
+          UpdateExpression: "SET #read = :read, updatedAt = :updatedAt",
+          ExpressionAttributeNames: {
+            "#read": "read",
+          },
+          ExpressionAttributeValues: {
+            ":read": { BOOL: true },
+            ":updatedAt": { S: updatedAt },
+          },
+        })
+      )
+    )
+  );
+
+  return { affectedCount: unread.length };
+};
+
+const handleClearCompletedNotifications = async (event) => {
+  const tenantId = getTenantId(event);
+  if (!tenantId || !NOTIFICATIONS_TABLE) return { affectedCount: 0 };
+
+  const items = await listTenantNotificationItems(tenantId);
+  const completed = items.filter((item) => String(item.status || "").toUpperCase() === "DONE");
+
+  await Promise.all(
+    completed.map((item) =>
+      ddb.send(
+        new DeleteItemCommand({
+          TableName: NOTIFICATIONS_TABLE,
+          Key: marshall({
+            PK: `TENANT#${tenantId}`,
+            SK: String(item.SK || ""),
+          }),
+        })
+      )
+    )
+  );
+
+  return { affectedCount: completed.length };
 };
 
 const handleUpdateForecastRunStatus = async (event) => {
@@ -1107,6 +1223,10 @@ const dispatchField = async (fieldName, event) => {
       return handleListNotifications(event);
     case "markNotificationRead":
       return handleMarkNotificationRead(event);
+    case "markAllNotificationsRead":
+      return handleMarkAllNotificationsRead(event);
+    case "clearCompletedNotifications":
+      return handleClearCompletedNotifications(event);
     case "updateForecastRunStatus":
       return handleUpdateForecastRunStatus(event);
     case "getSKUsMetadata":
