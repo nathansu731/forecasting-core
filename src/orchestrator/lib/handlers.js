@@ -707,13 +707,13 @@ const handleStartForecastRun = async (event) => {
 
 const handleGetForecastRun = async (event) => {
   const tenantId = getTenantId(event);
-  if (!tenantId) return { status: "error", message: "missing_tenant", result: {} };
+  if (!tenantId) return null;
 
   const runId = event?.input?.runId || event?.arguments?.runId;
-  if (!runId) return { status: "error", message: "missing_runId", result: {} };
+  if (!runId) return null;
 
   const item = await getRunById(tenantId, runId);
-  return { status: "success", run: normalizeRun(item) };
+  return normalizeRun(item);
 };
 
 const handleListForecastRuns = async (event) => {
