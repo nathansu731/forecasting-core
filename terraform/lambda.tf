@@ -88,6 +88,7 @@ resource "aws_iam_role_policy" "orchestrator_data_access" {
           aws_dynamodb_table.entitlements.arn,
           aws_dynamodb_table.tenants.arn,
           aws_dynamodb_table.notifications.arn,
+          "${aws_dynamodb_table.notifications.arn}/index/byTenantCreatedAt",
           aws_dynamodb_table.llm_usage.arn
         ]
       },
@@ -213,6 +214,7 @@ resource "aws_iam_role_policy" "lambda_data_access" {
           aws_dynamodb_table.entitlements.arn,
           aws_dynamodb_table.tenants.arn,
           aws_dynamodb_table.notifications.arn,
+          "${aws_dynamodb_table.notifications.arn}/index/byTenantCreatedAt",
           aws_dynamodb_table.llm_usage.arn
         ]
       }

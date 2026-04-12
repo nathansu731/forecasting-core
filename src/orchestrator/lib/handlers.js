@@ -653,7 +653,7 @@ const handleStartForecastRun = async (event) => {
   const baseS3OutputPrefix = latestRun?.s3OutputPrefix || null;
 
   const payload = {
-    mode: "forecast_run",
+    invocationType: "forecast_run",
     tenantId,
     runId,
     snapshotId,
