@@ -127,7 +127,9 @@ WORKDIR /var/task
 COPY scripts/ /var/task/scripts/
 COPY entrypoint.R /var/task/
 COPY bootstrap /var/task/bootstrap
-RUN chmod +x /var/task/bootstrap
+RUN chmod +x /var/task/bootstrap \
+    && chmod -R a+rX /var/task/scripts \
+    && chmod a+r /var/task/entrypoint.R
 
 # Lambda entrypoint
 ENTRYPOINT ["/var/task/bootstrap"]

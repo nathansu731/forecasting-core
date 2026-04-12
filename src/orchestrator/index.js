@@ -12,18 +12,20 @@ exports.handler = async (event) => {
       requireEnv(FORECAST_LAMBDA_ARN, "FORECAST_LAMBDA_ARN");
     }
 
-    const identityKeys = event?.identity ? Object.keys(event.identity) : [];
-    const claimKeys = event?.identity?.claims ? Object.keys(event.identity.claims) : [];
-    const headerKeys = event?.request?.headers ? Object.keys(event.request.headers) : [];
-    console.log(
-      JSON.stringify({
-        msg: "orchestrator_identity_debug",
-        identityKeys,
-        claimKeys,
-        headerKeys,
-        authHeaderPresent: Boolean(event?.request?.headers?.Authorization || event?.request?.headers?.authorization),
-      })
-    );
+    if (process.env.ORCHESTRATOR_DEBUG_LOGS === "1") {
+      const identityKeys = event?.identity ? Object.keys(event.identity) : [];
+      const claimKeys = event?.identity?.claims ? Object.keys(event.identity.claims) : [];
+      const headerKeys = event?.request?.headers ? Object.keys(event.request.headers) : [];
+      console.log(
+        JSON.stringify({
+          msg: "orchestrator_identity_debug",
+          identityKeys,
+          claimKeys,
+          headerKeys,
+          authHeaderPresent: Boolean(event?.request?.headers?.Authorization || event?.request?.headers?.authorization),
+        })
+      );
+    }
 
     return dispatchField(fieldName, event);
   } catch (err) {

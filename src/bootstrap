@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euo pipefail
+set -uo pipefail
 
 API="$AWS_LAMBDA_RUNTIME_API"
 
@@ -50,22 +50,18 @@ while true; do
     log "Received requestId: $REQUEST_ID"
 
     echo "$EVENT" > /tmp/event.json
-    RESPONSE=$(Rscript /tmp/run_event.R /tmp/event.json)
-
-
-  if [ $? -ne 0 ]; then
-    ERROR="{\"errorMessage\": \"R failed\"}"
-    log "R ERROR — Posting error back to Lambda..."
-    curl -s -X POST \
-      "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/error" \
-      -d "$ERROR"
-    continue
-  fi
-
-  log "Posting response for $REQUEST_ID"
-
-  curl -s -X POST \
-    "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" \
-    -d "$RESPONSE"
+    if RESPONSE=$(Rscript /tmp/run_event.R /tmp/event.json); then
+      log "Posting response for $REQUEST_ID"
+      curl -s -X POST \
+        "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" \
+        -d "$RESPONSE"
+    else
+      ERROR="{\"errorMessage\": \"R failed\"}"
+      log "R ERROR — Posting error back to Lambda..."
+      curl -s -X POST \
+        "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/error" \
+        -d "$ERROR"
+      continue
+    fi
 
 done
