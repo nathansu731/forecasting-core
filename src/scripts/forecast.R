@@ -45,6 +45,8 @@ run_forecast_pipeline <- function(event) {
   ddb <- NULL
   if (requireNamespace("paws.dynamodb", quietly = TRUE)) {
     ddb <- paws.dynamodb::dynamodb()
+  } else {
+    message("paws.dynamodb package not available; run status updates will be skipped")
   }
 
   read_json_from_s3 <- function(bucket, key) {
@@ -135,11 +137,44 @@ run_forecast_pipeline <- function(event) {
     if (is.null(price_column)) price_column <- requested_price
     selected_date_format <- ifelse(is.null(input_date_format) || input_date_format == "", "dd/mm/yyyy", as.character(input_date_format))
 
-    required_cols <- c("date", "sku", "location", "isholiday", "promotion", "aisle", target_column, price_column)
+    required_cols <- c("date", target_column)
     missing_cols <- setdiff(required_cols, names(df))
     if (length(missing_cols) > 0) {
       stop(paste("Missing columns:", paste(missing_cols, collapse = ", ")))
     }
+
+    if (!(price_column %in% names(df))) {
+      message("Price column not found (", price_column, "). Using default unit price = 1.")
+      df[[price_column]] <- 1
+    }
+
+    if (!("sku" %in% names(df))) {
+      message("SKU column not found. Using default SKU-1 for all rows.")
+      df$sku <- "SKU-1"
+    }
+    if (!("location" %in% names(df))) {
+      message("Location column not found. Using default location-1 for all rows.")
+      df$location <- "location-1"
+    }
+    if (!("aisle" %in% names(df))) {
+      message("Aisle column not found. Using default aisle-1 for all rows.")
+      df$aisle <- "aisle-1"
+    }
+    if (!("isholiday" %in% names(df))) {
+      message("isHoliday column not found. Using default 0 (FALSE) for all rows.")
+      df$isholiday <- 0
+    }
+    if (!("promotion" %in% names(df))) {
+      message("Promotion column not found. Using default 0 (FALSE) for all rows.")
+      df$promotion <- 0
+    }
+
+    df$sku <- trimws(as.character(df$sku))
+    df$location <- trimws(as.character(df$location))
+    df$aisle <- trimws(as.character(df$aisle))
+    df$sku[df$sku == "" | is.na(df$sku)] <- "SKU-1"
+    df$location[df$location == "" | is.na(df$location)] <- "location-1"
+    df$aisle[df$aisle == "" | is.na(df$aisle)] <- "aisle-1"
 
     df$date <- parse_dates_by_format(df$date, selected_date_format)
     df$quantity <- suppressWarnings(as.numeric(df[[target_column]]))
@@ -584,6 +619,7 @@ run_forecast_pipeline <- function(event) {
 
     return(list(status = "success", result = summary))
   }, error = function(e) {
+    message("Forecast pipeline failed for run_id=", run_id, " tenant_id=", tenant_id, " error=", e$message)
     update_run_status(ddb, forecast_runs_table, tenant_id, run_id, "FAILED")
     return(list(status = "error", message = e$message))
   })
