@@ -215,9 +215,9 @@ const sanitizeSteps = (steps, fallbackSteps) => {
 };
 
 const PLAN_CAPS = {
-  free: { requestsPerMonth: 100, tokensPerMonth: 200000 },
-  core: { requestsPerMonth: 500, tokensPerMonth: 2000000 },
-  professional: { requestsPerMonth: 2000, tokensPerMonth: 10000000 },
+  launch: { requestsPerMonth: 100, tokensPerMonth: 200000 },
+  professional: { requestsPerMonth: 500, tokensPerMonth: 2000000 },
+  enterprise: { requestsPerMonth: 2000, tokensPerMonth: 10000000 },
 };
 
 const ALLOWED_MODELS = new Set(["gpt-4o-mini"]);
@@ -256,28 +256,29 @@ const getHourKey = (now = new Date()) =>
   ).padStart(2, "0")}`;
 
 const normalizePlan = (value) => {
-  const plan = String(value || "free").toLowerCase().trim();
-  if (plan.includes("professional") || plan.includes("pro")) return "professional";
-  if (plan.includes("core")) return "core";
-  return "free";
+  const plan = String(value || "launch").toLowerCase().trim();
+  if (plan.includes("enterprise")) return "enterprise";
+  if (plan === "core" || plan.includes("professional") || plan === "pro") return "professional";
+  if (plan === "free" || plan.includes("launch")) return "launch";
+  return "launch";
 };
 
 const PLAN_ALLOWED_MODELS = {
-  free: ["arima"],
-  core: ["arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston"],
-  professional: ["arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston", "pooled_regression"],
+  launch: ["arima"],
+  professional: ["arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston"],
+  enterprise: ["arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston", "pooled_regression"],
 };
 
 const normalizeRequestedMode = (value, plan) => {
   const mode = String(value || "").toLowerCase().trim();
-  if (mode === "global" && plan === "professional") return "global";
+  if (mode === "global" && plan === "enterprise") return "global";
   return "local";
 };
 
 const normalizeRequestedModel = (value, plan, mode) => {
   if (mode === "global") return "pooled_regression";
   const requested = String(value || "").toLowerCase().trim();
-  const allowed = PLAN_ALLOWED_MODELS[plan] || PLAN_ALLOWED_MODELS.free;
+  const allowed = PLAN_ALLOWED_MODELS[plan] || PLAN_ALLOWED_MODELS.launch;
   if (allowed.includes(requested)) return requested;
   return allowed[0] || "arima";
 };
@@ -289,7 +290,7 @@ const extractNumber = (value, fallback) => {
 };
 
 const getTenantCaps = async (tenantId) => {
-  const defaultPlan = "free";
+  const defaultPlan = "launch";
   const planFromTenant = await getTenantSettings(tenantId);
   let plan = normalizePlan(planFromTenant?.plan || defaultPlan);
   let requestsPerMonth = PLAN_CAPS[plan].requestsPerMonth;
