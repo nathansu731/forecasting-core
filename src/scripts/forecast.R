@@ -123,6 +123,21 @@ run_forecast_pipeline <- function(event) {
       return(list(status = "success", result = list(message = "adjustments_applied")))
     }
 
+    previous_forecast_by_sku <- list()
+    if (!is.null(base_s3_output_prefix) && base_s3_output_prefix != "") {
+      previous_values <- tryCatch({
+        read_json_from_s3(artifact_bucket, paste0(base_s3_output_prefix, "/sku_forecast_values.json"))
+      }, error = function(e) NULL)
+
+      if (!is.null(previous_values$items) && length(previous_values$items) > 0) {
+        for (item in previous_values$items) {
+          if (!is.null(item$sku) && !is.null(item$forecastBaseline)) {
+            previous_forecast_by_sku[[item$sku]] <- item$forecastBaseline
+          }
+        }
+      }
+    }
+
     df <- read.csv(text = raw_text, stringsAsFactors = FALSE)
     df <- normalize_columns(df)
 
@@ -236,6 +251,7 @@ run_forecast_pipeline <- function(event) {
 
     series_list <- list()
     series_by_sku <- list()
+    actual_daily_map_by_sku <- list()
     for (sku in unique_skus) {
       sku_df <- agg[agg$sku == sku, ]
       sku_df <- sku_df[order(sku_df$date), ]
@@ -244,6 +260,7 @@ run_forecast_pipeline <- function(event) {
       series$quantity[is.na(series$quantity)] <- 0
       series_list[[length(series_list) + 1]] <- series$quantity
       series_by_sku[[sku]] <- series$quantity
+      actual_daily_map_by_sku[[sku]] <- setNames(as.list(round(series$quantity, 2)), format(series$date, "%Y-%m-%d"))
     }
 
     if (model_mode == "global" && length(unique_skus) >= 3) {
@@ -374,11 +391,76 @@ run_forecast_pipeline <- function(event) {
       forecast_keys <- sapply(future_dates, period_key, frequency = frequency)
 
       forecast_map <- to_named_map(forecast_keys, round(forecast_mean, 2))
-      demand_map <- forecast_map
       lower80_map <- to_named_map(forecast_keys, round(bounds$lower80, 2))
       upper80_map <- to_named_map(forecast_keys, round(bounds$upper80, 2))
       lower95_map <- to_named_map(forecast_keys, round(bounds$lower95, 2))
       upper95_map <- to_named_map(forecast_keys, round(bounds$upper95, 2))
+
+      periods <- forecast_keys
+      demand_map <- lapply(forecast_keys, function(period_key_value) NA_real_)
+      names(demand_map) <- forecast_keys
+      forecast_baseline_map <- forecast_map
+      demand_adjustment_map <- to_named_map(forecast_keys, rep(0, length(forecast_keys)))
+      forecast_adjustment_map <- to_named_map(forecast_keys, rep(0, length(forecast_keys)))
+      lower80_full_map <- lower80_map
+      upper80_full_map <- upper80_map
+      lower95_full_map <- lower95_map
+      upper95_full_map <- upper95_map
+
+      if (frequency == "daily") {
+        last_actual_date <- tail(as.Date(demand_period$date), 1)
+        historical_dates <- seq(last_actual_date - 29, by = "day", length.out = 30)
+        historical_keys <- format(historical_dates, "%Y-%m-%d")
+        periods <- c(historical_keys, forecast_keys)
+
+        actual_map <- actual_daily_map_by_sku[[sku]]
+        demand_map <- lapply(periods, function(period_key_value) {
+          if (period_key_value %in% historical_keys) {
+            if (!is.null(actual_map) && period_key_value %in% names(actual_map)) {
+              return(actual_map[[period_key_value]])
+            }
+            return(NA_real_)
+          }
+          NA_real_
+        })
+        names(demand_map) <- periods
+
+        prev_baseline <- previous_forecast_by_sku[[sku]]
+        forecast_baseline_map <- lapply(periods, function(period_key_value) {
+          if (period_key_value %in% forecast_keys) {
+            return(forecast_map[[period_key_value]])
+          }
+          if (!is.null(prev_baseline) && period_key_value %in% names(prev_baseline)) {
+            return(as.numeric(prev_baseline[[period_key_value]]))
+          }
+          NA_real_
+        })
+        names(forecast_baseline_map) <- periods
+
+        demand_adjustment_map <- to_named_map(periods, rep(0, length(periods)))
+        forecast_adjustment_map <- to_named_map(periods, rep(0, length(periods)))
+
+        lower80_full_map <- lapply(periods, function(period_key_value) {
+          if (period_key_value %in% forecast_keys) return(lower80_map[[period_key_value]])
+          NA_real_
+        })
+        names(lower80_full_map) <- periods
+        upper80_full_map <- lapply(periods, function(period_key_value) {
+          if (period_key_value %in% forecast_keys) return(upper80_map[[period_key_value]])
+          NA_real_
+        })
+        names(upper80_full_map) <- periods
+        lower95_full_map <- lapply(periods, function(period_key_value) {
+          if (period_key_value %in% forecast_keys) return(lower95_map[[period_key_value]])
+          NA_real_
+        })
+        names(lower95_full_map) <- periods
+        upper95_full_map <- lapply(periods, function(period_key_value) {
+          if (period_key_value %in% forecast_keys) return(upper95_map[[period_key_value]])
+          NA_real_
+        })
+        names(upper95_full_map) <- periods
+      }
 
       store <- if (!is.null(sku_meta[[sku]]$store)) sku_meta[[sku]]$store else "Unknown"
 
@@ -386,17 +468,17 @@ run_forecast_pipeline <- function(event) {
         sku = sku,
         store = store,
         frequency = frequency,
-        periods = forecast_keys,
+        periods = periods,
         demand = demand_map,
-        forecastBaseline = forecast_map,
-        demandAdjustment = demand_map,
-        forecastAdjustment = forecast_map,
-        lower80 = lower80_map,
-        upper80 = upper80_map,
-        lower95 = lower95_map,
-        upper95 = upper95_map,
+        forecastBaseline = forecast_baseline_map,
+        demandAdjustment = demand_adjustment_map,
+        forecastAdjustment = forecast_adjustment_map,
+        lower80 = lower80_full_map,
+        upper80 = upper80_full_map,
+        lower95 = lower95_full_map,
+        upper95 = upper95_full_map,
         originalDemand = demand_map,
-        originalForecastBaseline = forecast_map,
+        originalForecastBaseline = forecast_baseline_map,
         model = if (model_mode == "global") "pooled_regression" else model_method
       )
     }
@@ -447,9 +529,9 @@ run_forecast_pipeline <- function(event) {
     monthly_forecasts <- list(
       budget = fill_metric(revenue_map),
       demand = fill_metric(demand_map),
-      demandAdjustment = fill_metric(demand_map),
+      demandAdjustment = fill_metric(setNames(rep(0, length(month_keys)), month_keys)),
       forecastBaseline = fill_metric(forecast_map),
-      forecastAdjustment = fill_metric(forecast_map),
+      forecastAdjustment = fill_metric(setNames(rep(0, length(month_keys)), month_keys)),
       previousForecasts = fill_metric(forecast_map),
       variance = fill_metric(variance_map),
       revenue = fill_metric(revenue_map)

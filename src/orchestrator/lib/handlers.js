@@ -609,6 +609,7 @@ const handleStartForecastRun = async (event) => {
 
   await setTenantSettings(tenantId, { model, mode, seasonality, dateFormat, targetVariable, priceColumnName });
 
+  const previousRun = await getLatestRun(tenantId);
   const snapshotId = randomId("SNAPSHOT-");
   const runId = randomId("RUN-");
   const createdAt = nowIso();
@@ -649,8 +650,7 @@ const handleStartForecastRun = async (event) => {
     })
   );
 
-  const latestRun = await getLatestRun(tenantId);
-  const baseS3OutputPrefix = latestRun?.s3OutputPrefix || null;
+  const baseS3OutputPrefix = previousRun?.s3OutputPrefix || null;
 
   const payload = {
     invocationType: "forecast_run",
@@ -713,7 +713,30 @@ const handleGetForecastRun = async (event) => {
   if (!runId) return null;
 
   const item = await getRunById(tenantId, runId);
-  return normalizeRun(item);
+  const run = normalizeRun(item);
+  if (!run) return null;
+
+  if (run.status !== "DONE" && run.s3OutputPrefix) {
+    const ready = await outputFilesReady(run.s3OutputPrefix);
+    if (ready) {
+      let summary;
+      try {
+        summary = await readJsonFromS3(ARTIFACT_BUCKET, `${run.s3OutputPrefix}/report_summary.json`);
+      } catch {
+        summary = null;
+      }
+
+      await updateRunStatus(tenantId, run.runId, "DONE", summary);
+      return {
+        ...run,
+        status: "DONE",
+        summary: summary ?? run.summary ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  return run;
 };
 
 const handleListForecastRuns = async (event) => {
@@ -747,7 +770,7 @@ const handleListForecastRuns = async (event) => {
       const ready = await outputFilesReady(item.s3OutputPrefix);
       if (!ready) return item;
 
-      let summary = null;
+      let summary;
       try {
         summary = await readJsonFromS3(ARTIFACT_BUCKET, `${item.s3OutputPrefix}/report_summary.json`);
       } catch {

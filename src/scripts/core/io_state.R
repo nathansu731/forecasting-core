@@ -50,7 +50,7 @@ update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix =
     )
     tryCatch(
       {
-        httr::POST(
+        response <- httr::POST(
           url = appsync_url,
           httr::add_headers(
             `Content-Type` = "application/json",
@@ -59,6 +59,16 @@ update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix =
           body = payload,
           encode = "json"
         )
+        status_code <- httr::status_code(response)
+        body_text <- httr::content(response, as = "text", encoding = "UTF-8")
+        if (status_code >= 300) {
+          message("AppSync status update HTTP error: ", status_code, " body=", body_text)
+        } else {
+          parsed <- tryCatch(jsonlite::fromJSON(body_text, simplifyVector = FALSE), error = function(e) NULL)
+          if (!is.null(parsed$errors)) {
+            message("AppSync status update GraphQL errors: ", jsonlite::toJSON(parsed$errors, auto_unbox = TRUE))
+          }
+        }
       },
       error = function(e) {
         message("Skipping AppSync subscription update: ", e$message)
