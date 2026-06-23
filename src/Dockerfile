@@ -4,7 +4,7 @@ FROM amazonlinux:2 AS r-builder
 ARG R_VERSION=4.3.3
 
 RUN yum update -y && yum install -y \
-    gcc gcc-c++ gcc-gfortran make \
+    gcc gcc-c++ gcc-gfortran make cmake \
     libgfortran libgfortran-devel \
     libcurl-devel libxml2-devel \
     readline-devel pcre2-devel zlib-devel bzip2 bzip2-devel xz xz-devel \
@@ -50,6 +50,57 @@ ensure_matrix <- function() {
 
 ensure_matrix()
 
+install_source_with_log <- function(url, package_name) {
+  tarball <- basename(url)
+  dest <- file.path("/tmp", tarball)
+  log_file <- file.path("/tmp", paste0(package_name, "_install.log"))
+  unlink(dest)
+  unlink(log_file)
+  download.file(url, destfile = dest, quiet = TRUE)
+  cmd <- sprintf(
+    "cd /tmp && /opt/R/${R_VERSION}/bin/R CMD INSTALL %s > %s 2>&1",
+    shQuote(dest),
+    shQuote(log_file)
+  )
+  status <- system(cmd)
+  if (!identical(status, 0L)) {
+    message(package_name, " source install failed. Last 200 log lines:")
+    if (file.exists(log_file)) {
+      lines <- readLines(log_file, warn = FALSE)
+      tail_n <- min(length(lines), 200L)
+      if (tail_n > 0) cat(paste(tail(lines, tail_n), collapse = "\n"), "\n")
+    }
+    return(FALSE)
+  }
+  TRUE
+}
+
+ensure_data_table <- function() {
+  if ("data.table" %in% rownames(installed.packages())) return(invisible(TRUE))
+  message("Installing data.table from CRAN")
+  tryCatch({
+    install.packages("data.table", repos = repos, dependencies = deps, Ncpus = 1, quiet = FALSE)
+  }, error = function(e) {
+    message("data.table install failed: ", e$message)
+  })
+}
+
+ensure_xgboost <- function() {
+  if ("xgboost" %in% rownames(installed.packages())) return(invisible(TRUE))
+  ensure_data_table()
+  if (!("data.table" %in% rownames(installed.packages()))) {
+    message("Skipping xgboost archive install because data.table is unavailable")
+    return(invisible(FALSE))
+  }
+  message("Installing xgboost from CRAN archive (R 4.3.x / GCC 7 compatible)")
+  url <- "https://cran.r-project.org/src/contrib/Archive/xgboost/xgboost_1.6.0.1.tar.gz"
+  tryCatch({
+    install_source_with_log(url, "xgboost")
+  }, error = function(e) {
+    message("xgboost archive install failed: ", e$message)
+  })
+}
+
 pkgs <- Filter(nzchar, readLines("/tmp/requirements.R"))
 failed <- c()
 for (p in pkgs) {
@@ -64,10 +115,19 @@ for (p in pkgs) {
       next
     }
   }
+  if (p == "xgboost") {
+    ensure_xgboost()
+    if ("xgboost" %in% rownames(installed.packages())) {
+      next
+    }
+    failed <- c(failed, p)
+    message("xgboost missing after pinned archive install; skipping latest CRAN fallback on AL2/GCC 7")
+    next
+  }
   message("begin installing package ", p)
   ok <- TRUE
   tryCatch({
-    install.packages(p, repos = repos, dependencies = deps, Ncpus = 1, quiet = TRUE)
+    install.packages(p, repos = repos, dependencies = deps, Ncpus = 1, quiet = FALSE)
   }, error = function(e) {
     ok <<- FALSE
     message("install failed for ", p, ": ", e$message)
@@ -86,6 +146,11 @@ if (!("RcppArmadillo" %in% rownames(installed.packages()))) {
   if (file.exists("/tmp/RcppArmadillo_config.log")) {
     cat(readLines("/tmp/RcppArmadillo_config.log"), sep = "\n")
   }
+}
+if (!("xgboost" %in% rownames(installed.packages()))) {
+  message("xgboost install failed. Dumping site-library contents for inspection.")
+  print(.libPaths())
+  print(rownames(installed.packages()))
 }
 RSCRIPT
 RUN /opt/R/${R_VERSION}/bin/Rscript -e "download.packages('Rcpp', destdir='/tmp', type='source', repos='https://cloud.r-project.org')" \

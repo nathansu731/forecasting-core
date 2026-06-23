@@ -18,4 +18,5 @@ for (f in seq_along(FREQUENCIES)) {
   SEASONALITY_MAP[[FREQUENCIES[f]]] <- SEASONALITY_VALS[[f]]
 }
 
-VALID_LOCAL_MODELS <- c("arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston")
+VALID_LOCAL_MODELS <- c("arima", "regression_arima", "ets", "ses", "theta", "tbats", "dhr_arima", "naive", "snaive", "croston")
+VALID_GLOBAL_MODELS <- c("xgboost", "pooled_regression")

@@ -1,0 +1,67 @@
+{
+  "packId": "staging-smoke",
+  "description": "Staging assistant evals backed by real tenant/run data resolved from environment variables.",
+  "fixtures": [
+    {
+      "id": "staging-kpis-risk-explanation",
+      "mode": "staging",
+      "category": "kpis",
+      "runtime": {
+        "tenantIdEnv": "ASSISTANT_EVAL_STAGING_TENANT_ID",
+        "runIdEnv": "ASSISTANT_EVAL_STAGING_RUN_ID_KPIS",
+        "selectedSkuEnv": "ASSISTANT_EVAL_STAGING_SKU_KPIS",
+        "selectedStoreEnv": "ASSISTANT_EVAL_STAGING_STORE_KPIS"
+      },
+      "input": {
+        "command": "Why is this item risky?",
+        "pageId": "kpis",
+        "route": "/kpis",
+        "contextMode": "analysis"
+      },
+      "assertions": {
+        "expectedContains": ["risk"],
+        "minEvidenceCount": 2
+      }
+    },
+    {
+      "id": "staging-reports-run-comparison",
+      "mode": "staging",
+      "category": "reports",
+      "runtime": {
+        "tenantIdEnv": "ASSISTANT_EVAL_STAGING_TENANT_ID",
+        "runIdEnv": "ASSISTANT_EVAL_STAGING_RUN_ID_REPORTS"
+      },
+      "input": {
+        "command": "Summarize how this run compares with the recent run history.",
+        "pageId": "reports",
+        "route": "/reports",
+        "contextMode": "analysis"
+      },
+      "assertions": {
+        "expectedContains": ["run"],
+        "minEvidenceCount": 2
+      }
+    },
+    {
+      "id": "staging-forecast-series-shape",
+      "mode": "staging",
+      "category": "forecast-navigator",
+      "runtime": {
+        "tenantIdEnv": "ASSISTANT_EVAL_STAGING_TENANT_ID",
+        "runIdEnv": "ASSISTANT_EVAL_STAGING_RUN_ID_NAVIGATOR",
+        "selectedSkuEnv": "ASSISTANT_EVAL_STAGING_SKU_NAVIGATOR",
+        "selectedStoreEnv": "ASSISTANT_EVAL_STAGING_STORE_NAVIGATOR"
+      },
+      "input": {
+        "command": "Explain the forecast shape for this selected series.",
+        "pageId": "forecast-navigator",
+        "route": "/forecasts/forecast-navigator",
+        "contextMode": "analysis"
+      },
+      "assertions": {
+        "expectedContains": ["forecast"],
+        "minEvidenceCount": 2
+      }
+    }
+  ]
+}

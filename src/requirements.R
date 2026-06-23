@@ -2,8 +2,11 @@ jsonlite
 httr
 forecast
 paws.storage
+paws.database
 lubridate
 Matrix
 survival
 RcppEigen
 glmnet
+data.table
+xgboost

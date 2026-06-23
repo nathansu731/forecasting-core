@@ -14,7 +14,11 @@ resource "aws_appsync_resolver" "run_forecast_test" {
     "info": {
       "fieldName": "runForecastTest"
     },
-    "input": $util.toJson($context.arguments)
+    "input": $util.toJson($context.arguments),
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
   }
 }
 EOF
@@ -39,6 +43,7 @@ resource "aws_appsync_resolver" "get_skus_metadata" {
     "info": {
       "fieldName": "getSKUsMetadata"
     },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -67,6 +72,7 @@ resource "aws_appsync_resolver" "get_report_summary" {
     "info": {
       "fieldName": "getReportSummary"
     },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -95,6 +101,7 @@ resource "aws_appsync_resolver" "get_sku_forecasts" {
     "info": {
       "fieldName": "getSKUForecasts"
     },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -123,6 +130,7 @@ resource "aws_appsync_resolver" "get_monthly_totals" {
     "info": {
       "fieldName": "getMonthlyTotals"
     },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -151,6 +159,7 @@ resource "aws_appsync_resolver" "get_daily_forecasts" {
     "info": {
       "fieldName": "getDailyForecasts"
     },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -179,6 +188,36 @@ resource "aws_appsync_resolver" "get_sku_forecast_values" {
     "info": {
       "fieldName": "getSkuForecastValues"
     },
+    "arguments": $util.toJson($context.arguments),
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "get_merged_sku_forecast_values" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getMergedSkuForecastValues"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getMergedSkuForecastValues"
+    },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -207,6 +246,7 @@ resource "aws_appsync_resolver" "get_replenishment_signals" {
     "info": {
       "fieldName": "getReplenishmentSignals"
     },
+    "arguments": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),
     "request": {
       "headers": $util.toJson($context.request.headers)
@@ -463,6 +503,63 @@ resource "aws_appsync_resolver" "set_tenant_settings" {
   "payload": {
     "info": {
       "fieldName": "setTenantSettings"
+    },
+    "input": $util.toJson($context.arguments),
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "get_forecast_approvals" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Query"
+  field       = "getForecastApprovals"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "getForecastApprovals"
+    },
+    "identity": $util.toJson($context.identity),
+    "request": {
+      "headers": $util.toJson($context.request.headers)
+    }
+  }
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($context.result)
+EOF
+}
+
+resource "aws_appsync_resolver" "set_forecast_approval" {
+  api_id      = aws_appsync_graphql_api.api.id
+  type        = "Mutation"
+  field       = "setForecastApproval"
+  data_source = aws_appsync_datasource.orchestrator.name
+  kind        = "UNIT"
+
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "info": {
+      "fieldName": "setForecastApproval"
     },
     "input": $util.toJson($context.arguments),
     "identity": $util.toJson($context.identity),

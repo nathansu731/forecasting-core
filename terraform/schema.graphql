@@ -10,15 +10,15 @@ schema {
 type Query {
     runForecastTest(input: ForecastInput): GenericResponse!
 
-    getSKUsMetadata: GenericResponse!
+    getSKUsMetadata(runId: ID): GenericResponse!
 
-    getReportSummary: GenericResponse!
+    getReportSummary(runId: ID): GenericResponse!
 
-    getSKUForecasts: GenericResponse!
+    getSKUForecasts(runId: ID): GenericResponse!
 
-    getMonthlyTotals: GenericResponse!
+    getMonthlyTotals(runId: ID): GenericResponse!
 
-    getDailyForecasts: GenericResponse!
+    getDailyForecasts(runId: ID): GenericResponse!
 
     getForecastRun(runId: ID!): ForecastRun
 
@@ -26,11 +26,13 @@ type Query {
 
     listNotifications(limit: Int, nextToken: String): NotificationConnection!
 
-    getSkuForecastValues: GenericResponse!
+    getSkuForecastValues(runId: ID): GenericResponse!
+    getMergedSkuForecastValues(runId: ID): GenericResponse!
 
-    getReplenishmentSignals: GenericResponse!
+    getReplenishmentSignals(runId: ID): GenericResponse!
 
     getTenantSettings: TenantSettings
+    getForecastApprovals: GenericResponse!
 
     forecastAssistant(input: ForecastAssistantInput!): ForecastAssistantResponse!
 
@@ -45,8 +47,9 @@ type Mutation {
     clearCompletedNotifications: NotificationActionResult!
 
     setTenantSettings(input: TenantSettingsInput!): TenantSettings
+    setForecastApproval(input: ForecastApprovalInput!): GenericResponse!
 
-    updateForecastRunStatus(input: UpdateForecastRunStatusInput!): ForecastRun
+    updateForecastRunStatus(input: UpdateForecastRunStatusInput!): ForecastRun @aws_api_key
 }
 
 type Subscription {
@@ -72,6 +75,12 @@ type ForecastRun {
     runId: ID!
     tenantId: ID!
     snapshotId: ID
+    parentRunId: ID
+    isScenario: Boolean
+    adjustmentsKey: String
+    scenarioLabel: String
+    editedAt: AWSDateTime
+    editedCellCount: Int
     status: String!
     createdAt: AWSDateTime
     updatedAt: AWSDateTime
@@ -110,8 +119,15 @@ type TenantSettings {
     mode: String
     seasonality: String
     dateFormat: String
+    skuColumnName: String
+    storeColumnName: String
     targetVariable: String
+    onHandColumnName: String
     priceColumnName: String
+    holidayColumnName: String
+    promotionColumnName: String
+    openStatusColumnName: String
+    forecastHorizon: Int
     updatedAt: AWSDateTime
 }
 
@@ -120,8 +136,21 @@ input TenantSettingsInput {
     mode: String
     seasonality: String
     dateFormat: String
+    skuColumnName: String
+    storeColumnName: String
     targetVariable: String
+    onHandColumnName: String
     priceColumnName: String
+    holidayColumnName: String
+    promotionColumnName: String
+    openStatusColumnName: String
+    forecastHorizon: Int
+}
+
+input ForecastApprovalInput {
+    sku: String!
+    store: String
+    approved: Boolean!
 }
 
 # -------------------------------
@@ -136,6 +165,9 @@ input StartForecastInput {
     s3Key: String!
     originalFilename: String
     adjustmentsKey: String
+    parentRunId: ID
+    scenarioLabel: String
+    editedCellCount: Int
     sku: String
     store: String
     frequency: String
@@ -143,8 +175,15 @@ input StartForecastInput {
     mode: String
     seasonality: String
     dateFormat: String
+    skuColumnName: String
+    storeColumnName: String
     targetVariable: String
     priceColumnName: String
+    holidayColumnName: String
+    promotionColumnName: String
+    openStatusColumnName: String
+    forecastHorizon: Int
+    futureAssumptionsJson: AWSJSON
 }
 
 input UpdateForecastRunStatusInput {
@@ -159,6 +198,10 @@ input ForecastAssistantInput {
     command: String!
     runId: ID
     contextMode: String
+    pageId: String
+    route: String
+    selectedSku: String
+    selectedStore: String
 }
 
 type ForecastAssistantAction {
@@ -176,6 +219,12 @@ type ForecastAssistantStep {
     action: ForecastAssistantAction
 }
 
+type AssistantEvidence {
+    source: String!
+    title: String!
+    detail: String!
+}
+
 type ForecastAssistantResponse {
     status: String!
     intent: String!
@@ -184,6 +233,11 @@ type ForecastAssistantResponse {
     checklist: [String!]!
     suggestedPrompts: [String!]!
     steps: [ForecastAssistantStep!]!
+    confidence: Float
+    evidence: [AssistantEvidence!]!
+    warnings: [String!]!
+    usedTools: [String!]!
+    answerVersion: String!
 }
 
 type AssistantUsage {

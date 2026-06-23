@@ -1,10 +1,14 @@
-const { dispatchField } = require("./lib/handlers");
+const { dispatchField, handleQueueRecords } = require("./lib/handlers");
 const { ARTIFACT_BUCKET, FORECAST_RUNS_TABLE, DATA_SNAPSHOTS_TABLE, FORECAST_LAMBDA_ARN, requireEnv } = require("./lib/shared");
 
 exports.handler = async (event) => {
   try {
     requireEnv(ARTIFACT_BUCKET, "ARTIFACT_BUCKET");
     requireEnv(FORECAST_RUNS_TABLE, "FORECAST_RUNS_TABLE");
+
+    if (Array.isArray(event?.Records) && event.Records.length > 0) {
+      return handleQueueRecords(event);
+    }
 
     const fieldName = event?.info?.fieldName || "";
     if (fieldName === "startForecastRun") {
@@ -29,10 +33,9 @@ exports.handler = async (event) => {
 
     return dispatchField(fieldName, event);
   } catch (err) {
-    return {
-      status: "error",
-      message: err instanceof Error ? err.message : "handler_error",
-      result: {},
-    };
+    if (Array.isArray(event?.Records) && event.Records.length > 0) {
+      throw err;
+    }
+    throw err;
   }
 };

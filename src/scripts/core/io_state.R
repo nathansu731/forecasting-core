@@ -1,6 +1,12 @@
 update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix = NULL, summary = NULL) {
   if (is.null(ddb) || is.null(table) || table == "") {
-    message("Skipping DynamoDB status update (DDB not configured)")
+    if (is.null(ddb) && (is.null(table) || table == "")) {
+      message("Skipping DynamoDB status update (DDB client unavailable and table not configured)")
+    } else if (is.null(ddb)) {
+      message("Skipping DynamoDB status update (DDB client unavailable; check paws.database in runtime image)")
+    } else {
+      message("Skipping DynamoDB status update (FORECAST_RUNS_TABLE not configured)")
+    }
   } else {
     expr_names <- list("#status" = "status")
     expr_values <- list(":status" = list(S = status), ":updatedAt" = list(S = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ")))
@@ -35,7 +41,7 @@ update_run_status <- function(ddb, table, tenant_id, run_id, status, s3_prefix =
     if (!is.null(summary)) {
       summary_json <- toJSON(summary, auto_unbox = TRUE)
     }
-    mutation <- "mutation UpdateForecastRunStatus($input: UpdateForecastRunStatusInput!) { updateForecastRunStatus(input: $input) { runId tenantId status updatedAt } }"
+    mutation <- "mutation UpdateForecastRunStatus($input: UpdateForecastRunStatusInput!) { updateForecastRunStatus(input: $input) { __typename } }"
     payload <- list(
       query = mutation,
       variables = list(

@@ -4,8 +4,8 @@ resource "aws_lambda_function" "fn" {
   package_type  = "Image"
   image_uri     = var.initial_image_uri
   role          = aws_iam_role.lambda_exec.arn
-  timeout       = 120
-  memory_size   = 1024
+  timeout       = 300
+  memory_size   = 2048
   architectures = ["x86_64"]
   environment {
     variables = {
@@ -99,6 +99,24 @@ resource "aws_iam_role_policy" "orchestrator_data_access" {
           aws_lambda_function.fn.arn,
           "${aws_lambda_function.fn.arn}:*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["sqs:SendMessage"]
+        Resource = [
+          aws_sqs_queue.forecast_local_runs.arn,
+          aws_sqs_queue.forecast_local_batches.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ReceiveMessage",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = [aws_sqs_queue.forecast_local_runs.arn]
       }
     ]
   })
@@ -116,22 +134,33 @@ resource "aws_lambda_function" "orchestrator" {
 
   environment {
     variables = {
-      RAW_BUCKET                      = aws_s3_bucket.raw.bucket
-      ARTIFACT_BUCKET                 = aws_s3_bucket.artifacts.bucket
-      FORECAST_RUNS_TABLE             = aws_dynamodb_table.forecast_runs.name
-      DATA_SNAPSHOTS_TABLE            = aws_dynamodb_table.data_snapshots.name
-      FORECAST_LAMBDA_ARN             = aws_lambda_function.fn.arn
-      NOTIFICATIONS_TABLE             = aws_dynamodb_table.notifications.name
-      TENANTS_TABLE                   = aws_dynamodb_table.tenants.name
-      ENTITLEMENTS_TABLE              = aws_dynamodb_table.entitlements.name
-      LLM_USAGE_TABLE                 = aws_dynamodb_table.llm_usage.name
-      OPENAI_API_KEY                  = var.openai_api_key
-      OPENAI_MODEL                    = var.openai_model
-      ASSISTANT_ENABLED               = tostring(var.assistant_enabled)
-      ASSISTANT_CACHE_TTL_SECONDS     = tostring(var.assistant_cache_ttl_seconds)
-      ASSISTANT_RATE_LIMIT_PER_MINUTE = tostring(var.assistant_rate_limit_per_minute)
-      ASSISTANT_RATE_LIMIT_PER_HOUR   = tostring(var.assistant_rate_limit_per_hour)
-      ASSISTANT_OPENAI_TIMEOUT_MS     = tostring(var.assistant_openai_timeout_ms)
+      RAW_BUCKET                              = aws_s3_bucket.raw.bucket
+      ARTIFACT_BUCKET                         = aws_s3_bucket.artifacts.bucket
+      FORECAST_RUNS_TABLE                     = aws_dynamodb_table.forecast_runs.name
+      DATA_SNAPSHOTS_TABLE                    = aws_dynamodb_table.data_snapshots.name
+      FORECAST_LAMBDA_ARN                     = aws_lambda_function.fn.arn
+      FORECAST_LOCAL_RUNS_QUEUE_URL           = aws_sqs_queue.forecast_local_runs.id
+      FORECAST_LOCAL_BATCH_QUEUE_URL          = aws_sqs_queue.forecast_local_batches.id
+      FORECAST_LOCAL_BATCH_SIZE               = "2"
+      NOTIFICATIONS_TABLE                     = aws_dynamodb_table.notifications.name
+      TENANTS_TABLE                           = aws_dynamodb_table.tenants.name
+      ENTITLEMENTS_TABLE                      = aws_dynamodb_table.entitlements.name
+      LLM_USAGE_TABLE                         = aws_dynamodb_table.llm_usage.name
+      OPENAI_API_KEY                          = var.openai_api_key
+      OPENAI_MODEL                            = var.openai_model
+      ASSISTANT_ENABLED                       = tostring(var.assistant_enabled)
+      ASSISTANT_CACHE_TTL_SECONDS             = tostring(var.assistant_cache_ttl_seconds)
+      ASSISTANT_RATE_LIMIT_PER_MINUTE         = tostring(var.assistant_rate_limit_per_minute)
+      ASSISTANT_RATE_LIMIT_PER_HOUR           = tostring(var.assistant_rate_limit_per_hour)
+      ASSISTANT_OPENAI_TIMEOUT_MS             = tostring(var.assistant_openai_timeout_ms)
+      ASSISTANT_EVAL_STAGING_TENANT_ID        = var.assistant_eval_staging_tenant_id
+      ASSISTANT_EVAL_STAGING_RUN_ID_KPIS      = var.assistant_eval_staging_run_id_kpis
+      ASSISTANT_EVAL_STAGING_SKU_KPIS         = var.assistant_eval_staging_sku_kpis
+      ASSISTANT_EVAL_STAGING_STORE_KPIS       = var.assistant_eval_staging_store_kpis
+      ASSISTANT_EVAL_STAGING_RUN_ID_REPORTS   = var.assistant_eval_staging_run_id_reports
+      ASSISTANT_EVAL_STAGING_RUN_ID_NAVIGATOR = var.assistant_eval_staging_run_id_navigator
+      ASSISTANT_EVAL_STAGING_SKU_NAVIGATOR    = var.assistant_eval_staging_sku_navigator
+      ASSISTANT_EVAL_STAGING_STORE_NAVIGATOR  = var.assistant_eval_staging_store_navigator
     }
   }
 }
@@ -203,12 +232,17 @@ resource "aws_iam_role_policy" "lambda_data_access" {
       {
         Effect = "Allow"
         Action = [
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ReceiveMessage",
+          "sqs:ChangeMessageVisibility",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:Query"
         ]
         Resource = [
+          aws_sqs_queue.forecast_local_batches.arn,
           aws_dynamodb_table.forecast_runs.arn,
           aws_dynamodb_table.data_snapshots.arn,
           aws_dynamodb_table.entitlements.arn,

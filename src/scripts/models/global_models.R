@@ -1,6 +1,9 @@
-# Implementation of global models: pooled regression and CatBoost
+# Implementation of global models: pooled regression, XGBoost, and CatBoost
 
 library(glmnet)
+
+failed_loading_xgboost = FALSE
+tryCatch(library(xgboost), error = function(err) {failed_loading_xgboost<<-TRUE})
 
 failed_loading_catboost = FALSE
 tryCatch(library(catboost), error = function(err) {failed_loading_catboost<<-TRUE})
@@ -40,6 +43,26 @@ fit_model <- function(fitting_data, lag, final_lags, forecast_horizon, series_me
   if(method == "pooled_regression"){
     # Fit the pooled regression model
     model <- glm(formula = formula, data = fitting_data)
+  }else if(method == "xgboost"){
+    if (failed_loading_xgboost) stop("Error when loading xgboost, cannot run global model based on xgboost")
+    train_matrix <- as.matrix(fitting_data[-1])
+    label_vector <- as.numeric(fitting_data[,1])
+    dtrain <- xgboost::xgb.DMatrix(data = train_matrix, label = label_vector)
+    params <- list(
+      objective = "reg:squarederror",
+      eval_metric = "rmse",
+      eta = 0.05,
+      max_depth = 6,
+      min_child_weight = 1,
+      subsample = 0.8,
+      colsample_bytree = 0.8
+    )
+    model <- xgboost::xgb.train(
+      params = params,
+      data = dtrain,
+      nrounds = 200,
+      verbose = 0
+    )
   }else if(method == "catboost"){
     if (failed_loading_catboost) stop("Error when loading catboost, cannot run global model based on catboost")
     # Fit the CatBoost model
@@ -62,6 +85,10 @@ forec_recursive <- function(lag, model, final_lags, forecast_horizon, series_mea
     # Get predictions for the current horizon
     if(method == "pooled_regression")
       new_predictions <- predict.glm(object = model, newdata = as.data.frame(final_lags)) 
+    else if(method == "xgboost"){
+      xgb_final_lags <- xgboost::xgb.DMatrix(as.matrix(final_lags))
+      new_predictions <- predict(model, xgb_final_lags)
+    }
     else if(method == "catboost"){
       catboost_final_lags <- catboost.load_pool(final_lags)
       new_predictions <- catboost.predict(model, catboost_final_lags)

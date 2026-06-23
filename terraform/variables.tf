@@ -94,3 +94,51 @@ variable "assistant_openai_timeout_ms" {
   type    = number
   default = 12000
 }
+
+variable "assistant_eval_staging_tenant_id" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_run_id_kpis" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_sku_kpis" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_store_kpis" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_run_id_reports" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_run_id_navigator" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_sku_navigator" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "assistant_eval_staging_store_navigator" {
+  type      = string
+  default   = ""
+  sensitive = true
+}

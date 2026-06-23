@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "main": "index.js",
+  "scripts": {
+    "validate-assistant-evals": "node evals/validate-assistant-evals.js",
+    "assistant-evals": "node evals/run-assistant-evals.js --pack offline",
+    "assistant-evals:offline": "node evals/run-assistant-evals.js --pack offline",
+    "assistant-evals:staging": "node evals/run-assistant-evals.js --pack staging"
+  },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.657.0",
     "@aws-sdk/client-lambda": "^3.657.0",
