@@ -57,6 +57,8 @@ terraform/.terraform/providers/registry.terraform.io/hashicorp/aws/
 
 # Terraform local/sensitive files
 /terraform/terraform.tfvars
+/terraform/dev.tfvars
+/terraform/prod.tfvars
 terraform/*.auto.tfvars
 terraform/*.auto.tfvars.json
 terraform/override.tf

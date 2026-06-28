@@ -1,7 +1,7 @@
 version: 0.2
 env:
   variables:
-    IMAGE_NAME: forecast-lambda
+    IMAGE_NAME: forecasting-core
 phases:
   pre_build:
     commands:
@@ -12,19 +12,21 @@ phases:
       - REPO_URI=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${IMAGE_NAME}
       - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin ${REPO_URI}
       - GIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+      - RELEASE_TAG=${RELEASE_TAG:-release-${GIT_SHA}}
+      - PROD_TAG=${PROD_TAG:-prod}
   build:
     commands:
+      - echo Validating forecast runtime contract...
+      - node ops/validate-forecast-runtime.js
       - echo Building Docker image...
       - docker build -t ${IMAGE_NAME}:$GIT_SHA .
       - docker tag ${IMAGE_NAME}:$GIT_SHA ${REPO_URI}:$GIT_SHA
-      - docker tag ${IMAGE_NAME}:$GIT_SHA ${REPO_URI}:latest
   post_build:
     commands:
       - echo Pushing image to ECR...
       - docker push ${REPO_URI}:$GIT_SHA
-      - docker push ${REPO_URI}:latest
-      # Emit artifact with the full image URI for deploy stage
-      - printf '{"imageUri":"%s"}' "${REPO_URI}:${GIT_SHA}" > image-detail.json
+      # Emit artifact with the full image URI and promotion metadata for deploy/release stages
+      - printf '{"imageUri":"%s","gitShaTag":"%s","releaseTag":"%s","prodTag":"%s"}' "${REPO_URI}:${GIT_SHA}" "${GIT_SHA}" "${RELEASE_TAG}" "${PROD_TAG}" > image-detail.json
 artifacts:
   files:
     - image-detail.json

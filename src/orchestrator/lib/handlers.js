@@ -2745,8 +2745,8 @@ const handleForecastAssistant = async (event) => {
 
   await incrementTenantUsage(tenantId, monthKey, {
     requests: 1,
-    inputTokens: llmResult?.usage?.inputTokens || 0,
-    outputTokens: llmResult?.usage?.outputTokens || 0,
+    inputTokens: generated?.usage?.inputTokens || 0,
+    outputTokens: generated?.usage?.outputTokens || 0,
   });
 
   await setAssistantCachedResponse({

@@ -2,6 +2,8 @@
 set -uo pipefail
 
 API="$AWS_LAMBDA_RUNTIME_API"
+RESPONSE_FILE="/tmp/response.json"
+RUNTIME_LOG_FILE="/tmp/r-runtime.log"
 
 log() {
   echo "[bootstrap] $1" 1>&2
@@ -33,8 +35,16 @@ cat <<-'EOF' > /tmp/run_event.R
     result <- handler(event, NULL)
     cat(toJSON(result, auto_unbox = TRUE))
   }, error=function(e) {
-    message("R ERROR: ", e$message)
-    stop(e)
+    error_payload <- list(
+      errorMessage = conditionMessage(e),
+      errorType = class(e)[1],
+      errorDetails = list(
+        call = if (is.null(conditionCall(e))) NULL else paste(deparse(conditionCall(e)), collapse = " "),
+        stack = vapply(sys.calls(), function(call) paste(deparse(call), collapse = " "), character(1))
+      )
+    )
+    cat(toJSON(error_payload, auto_unbox = TRUE, null = "null"))
+    quit(save = "no", status = 1)
   })
 EOF
 
@@ -50,14 +60,22 @@ while true; do
     log "Received requestId: $REQUEST_ID"
 
     echo "$EVENT" > /tmp/event.json
-    if RESPONSE=$(Rscript /tmp/run_event.R /tmp/event.json); then
+    : > "$RESPONSE_FILE"
+    : > "$RUNTIME_LOG_FILE"
+    if Rscript /tmp/run_event.R /tmp/event.json >"$RESPONSE_FILE" 2>"$RUNTIME_LOG_FILE"; then
+      RESPONSE=$(cat "$RESPONSE_FILE")
       log "Posting response for $REQUEST_ID"
       curl -s -X POST \
         "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" \
         -d "$RESPONSE"
     else
-      ERROR="{\"errorMessage\": \"R failed\"}"
-      log "R ERROR — Posting error back to Lambda..."
+      if [ -s "$RESPONSE_FILE" ]; then
+        ERROR=$(cat "$RESPONSE_FILE")
+      else
+        ERROR="{\"errorMessage\":\"R failed\",\"errorType\":\"RRuntimeError\"}"
+      fi
+      LOG_SNIPPET=$(tail -n 20 "$RUNTIME_LOG_FILE" 2>/dev/null | tr '\n' ' ')
+      log "R ERROR for ${REQUEST_ID}: ${LOG_SNIPPET}"
       curl -s -X POST \
         "http://${API}/2018-06-01/runtime/invocation/${REQUEST_ID}/error" \
         -d "$ERROR"

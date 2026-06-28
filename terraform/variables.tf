@@ -12,17 +12,25 @@ variable "cognito_user_pool_id" {
   type = string
 }
 
+variable "enable_pipeline" {
+  type    = bool
+  default = true
+}
+
 # GitHub (CodeStar connection)
 variable "codestar_connection_arn" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "github_owner" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "github_repo" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "github_branch" {

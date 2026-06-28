@@ -32,15 +32,37 @@ RUN curl -fsSL https://cran.r-project.org/src/base/R-4/R-${R_VERSION}.tar.gz -o 
 
 # Install R packages here (while compiler is available)
 COPY requirements.R /tmp/requirements.R
+COPY requirements.lock /tmp/requirements.lock
 RUN cat <<'RSCRIPT' > /tmp/install_packages.R
 options(download.file.method = "libcurl")
-repos <- "https://cloud.r-project.org"
 deps <- c("Depends", "Imports", "LinkingTo")
+
+read_lock_config <- function(path) {
+  lines <- readLines(path, warn = FALSE)
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines)]
+  keys <- sub("=.*$", "", lines)
+  values <- sub("^[^=]+=", "", lines)
+  stats::setNames(as.list(values), keys)
+}
+
+lock_config <- read_lock_config("/tmp/requirements.lock")
+snapshot_repo <- lock_config[["SNAPSHOT_REPO"]]
+if (is.null(snapshot_repo) || !nzchar(snapshot_repo)) {
+  stop("requirements.lock is missing SNAPSHOT_REPO")
+}
+fallback_repo <- lock_config[["FALLBACK_REPO"]]
+if (is.null(fallback_repo) || !nzchar(fallback_repo)) {
+  fallback_repo <- "https://cloud.r-project.org"
+}
+repos <- c(PRIMARY = snapshot_repo, FALLBACK = fallback_repo)
+message("Using locked CRAN snapshot repo: ", snapshot_repo)
+message("Using CRAN fallback repo: ", fallback_repo)
 
 ensure_matrix <- function() {
   if ("Matrix" %in% rownames(installed.packages())) return(invisible(TRUE))
-  message("Installing Matrix from CRAN archive (R 4.3.x compatible)")
-  url <- "https://cran.r-project.org/src/contrib/Archive/Matrix/Matrix_1.6-5.tar.gz"
+  message("Installing Matrix from locked archive URL")
+  url <- lock_config[["MATRIX_URL"]]
   tryCatch({
     install.packages(url, repos = NULL, type = "source", dependencies = deps, quiet = TRUE)
   }, error = function(e) {
@@ -92,8 +114,8 @@ ensure_xgboost <- function() {
     message("Skipping xgboost archive install because data.table is unavailable")
     return(invisible(FALSE))
   }
-  message("Installing xgboost from CRAN archive (R 4.3.x / GCC 7 compatible)")
-  url <- "https://cran.r-project.org/src/contrib/Archive/xgboost/xgboost_1.6.0.1.tar.gz"
+  message("Installing xgboost from locked archive URL")
+  url <- lock_config[["XGBOOST_URL"]]
   tryCatch({
     install_source_with_log(url, "xgboost")
   }, error = function(e) {
@@ -152,13 +174,23 @@ if (!("xgboost" %in% rownames(installed.packages()))) {
   print(.libPaths())
   print(rownames(installed.packages()))
 }
+installed_summary <- installed.packages()[, c("Package", "Version")]
+installed_summary <- installed_summary[order(installed_summary[, "Package"]), , drop = FALSE]
+write.table(
+  installed_summary,
+  file = "/tmp/installed-r-packages.lock",
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
 RSCRIPT
-RUN /opt/R/${R_VERSION}/bin/Rscript -e "download.packages('Rcpp', destdir='/tmp', type='source', repos='https://cloud.r-project.org')" \
+RUN /opt/R/${R_VERSION}/bin/Rscript -e "lock <- readLines('/tmp/requirements.lock'); repo <- sub('^[^=]+=','', lock[grepl('^SNAPSHOT_REPO=', lock)]); download.packages('Rcpp', destdir='/tmp', type='source', repos=repo)" \
+    || /opt/R/${R_VERSION}/bin/Rscript -e "lock <- readLines('/tmp/requirements.lock'); repo <- sub('^[^=]+=','', lock[grepl('^FALLBACK_REPO=', lock)]); if (!length(repo)) repo <- 'https://cloud.r-project.org'; download.packages('Rcpp', destdir='/tmp', type='source', repos=repo)" \
     && TAR_FILE=$(ls /tmp/Rcpp_*.tar.gz | head -n 1) \
     && /opt/R/${R_VERSION}/bin/R CMD INSTALL $TAR_FILE
-RUN RCPPARMA_VER=0.12.4.1.0 \
-    && curl -fsSL https://cran.r-project.org/src/contrib/Archive/RcppArmadillo/RcppArmadillo_${RCPPARMA_VER}.tar.gz -o /tmp/RcppArmadillo_${RCPPARMA_VER}.tar.gz \
-    && /opt/R/${R_VERSION}/bin/R CMD INSTALL /tmp/RcppArmadillo_${RCPPARMA_VER}.tar.gz > /tmp/rcpparmadillo.log 2>&1 \
+RUN RCPPARMA_URL=$(awk -F= '/^RCPPARMADILLO_URL=/{print $2}' /tmp/requirements.lock) \
+    && curl -fsSL "${RCPPARMA_URL}" -o /tmp/RcppArmadillo.tar.gz \
+    && /opt/R/${R_VERSION}/bin/R CMD INSTALL /tmp/RcppArmadillo.tar.gz > /tmp/rcpparmadillo.log 2>&1 \
     || (echo 'RcppArmadillo install log:' && tail -n 200 /tmp/rcpparmadillo.log && exit 1)
 RUN /opt/R/${R_VERSION}/bin/Rscript /tmp/install_packages.R
 
@@ -182,6 +214,7 @@ RUN yum install -y \
 
 # Copy R + prebuilt packages
 COPY --from=r-builder /opt/R/${R_VERSION} /opt/R/${R_VERSION}
+COPY --from=r-builder /tmp/installed-r-packages.lock /opt/R/${R_VERSION}/installed-r-packages.lock
 
 # Set R environment
 ENV PATH="/opt/R/${R_VERSION}/bin:${PATH}"

@@ -1,0 +1,23 @@
+{
+  "invocationType": "forecast_run",
+  "tenantId": "tenant-smoke",
+  "runId": "RUN-SMOKE",
+  "snapshotId": "SNAPSHOT-SMOKE",
+  "s3Bucket": "replace-with-raw-bucket",
+  "s3Key": "imports/replace-with-input.csv",
+  "s3OutputPrefix": "tenant-artifacts/tenant-smoke/runs/RUN-SMOKE",
+  "executionMode": "direct_lambda",
+  "model": "arima",
+  "mode": "global",
+  "seasonality": "auto",
+  "forecastHorizon": 30,
+  "dateFormat": "Y-m-d",
+  "skuColumnName": "sku",
+  "storeColumnName": "store",
+  "targetVariable": "quantity",
+  "priceColumnName": "price",
+  "holidayColumnName": "holiday",
+  "promotionColumnName": "promotion",
+  "openStatusColumnName": "is_open",
+  "futureAssumptionsJson": ""
+}

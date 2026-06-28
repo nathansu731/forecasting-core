@@ -10,12 +10,14 @@ data "aws_iam_policy_document" "codebuild_assume" {
 }
 
 resource "aws_iam_role" "cb_build_role" {
+  count              = var.enable_pipeline ? 1 : 0
   name               = "${var.project_name}-cb-build"
   assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
 }
 
 resource "aws_iam_role_policy" "cb_build_policy" {
-  role = aws_iam_role.cb_build_role.id
+  count = var.enable_pipeline ? 1 : 0
+  role  = aws_iam_role.cb_build_role[0].id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -28,12 +30,14 @@ resource "aws_iam_role_policy" "cb_build_policy" {
 }
 
 resource "aws_iam_role" "cb_deploy_role" {
+  count              = var.enable_pipeline ? 1 : 0
   name               = "${var.project_name}-cb-deploy"
   assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
 }
 
 resource "aws_iam_role_policy" "cb_deploy_policy" {
-  role = aws_iam_role.cb_deploy_role.id
+  count = var.enable_pipeline ? 1 : 0
+  role  = aws_iam_role.cb_deploy_role[0].id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -46,8 +50,9 @@ resource "aws_iam_role_policy" "cb_deploy_policy" {
 
 # ---------- CodeBuild projects ----------
 resource "aws_codebuild_project" "build" {
+  count        = var.enable_pipeline ? 1 : 0
   name         = "${var.project_name}-build"
-  service_role = aws_iam_role.cb_build_role.arn
+  service_role = aws_iam_role.cb_build_role[0].arn
   artifacts { type = "CODEPIPELINE" }
   environment {
     compute_type    = "BUILD_GENERAL1_SMALL"
@@ -67,8 +72,9 @@ resource "aws_codebuild_project" "build" {
 }
 
 resource "aws_codebuild_project" "deploy" {
+  count        = var.enable_pipeline ? 1 : 0
   name         = "${var.project_name}-deploy"
-  service_role = aws_iam_role.cb_deploy_role.arn
+  service_role = aws_iam_role.cb_deploy_role[0].arn
   artifacts { type = "CODEPIPELINE" }
   environment {
     compute_type = "BUILD_GENERAL1_SMALL"
@@ -98,12 +104,14 @@ data "aws_iam_policy_document" "codepipeline_assume" {
 }
 
 resource "aws_iam_role" "cp_role" {
+  count              = var.enable_pipeline ? 1 : 0
   name               = "${var.project_name}-codepipeline"
   assume_role_policy = data.aws_iam_policy_document.codepipeline_assume.json
 }
 
 resource "aws_iam_role_policy" "cp_policy" {
-  role = aws_iam_role.cp_role.id
+  count = var.enable_pipeline ? 1 : 0
+  role  = aws_iam_role.cp_role[0].id
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -116,8 +124,9 @@ resource "aws_iam_role_policy" "cp_policy" {
 
 # ---------- CodePipeline ----------
 resource "aws_codepipeline" "pipeline" {
+  count    = var.enable_pipeline ? 1 : 0
   name     = "${var.project_name}-pipeline"
-  role_arn = aws_iam_role.cp_role.arn
+  role_arn = aws_iam_role.cp_role[0].arn
 
   artifact_store {
     type     = "S3"
@@ -153,7 +162,7 @@ resource "aws_codepipeline" "pipeline" {
       input_artifacts  = ["SourceOutput"]
       output_artifacts = ["BuildOutput"]
       configuration = {
-        ProjectName = aws_codebuild_project.build.name
+        ProjectName = aws_codebuild_project.build[0].name
       }
     }
   }
@@ -168,7 +177,7 @@ resource "aws_codepipeline" "pipeline" {
       version         = "1"
       input_artifacts = ["BuildOutput"]
       configuration = {
-        ProjectName = aws_codebuild_project.deploy.name
+        ProjectName = aws_codebuild_project.deploy[0].name
       }
     }
   }

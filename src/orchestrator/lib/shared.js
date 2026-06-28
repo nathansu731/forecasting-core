@@ -354,6 +354,7 @@ const outputFilesReady = async (prefix) => {
     "metadata.json",
     "report_summary.json",
     "replenishment_signals.json",
+    "sku_forecast_values.json",
   ];
   try {
     await Promise.all(

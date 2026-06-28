@@ -9,6 +9,7 @@ run_forecast_pipeline <- function(event) {
   raw_bucket <- Sys.getenv("RAW_BUCKET")
   artifact_bucket <- Sys.getenv("ARTIFACT_BUCKET")
   forecast_runs_table <- Sys.getenv("FORECAST_RUNS_TABLE")
+  data_snapshots_table <- Sys.getenv("DATA_SNAPSHOTS_TABLE")
 
   unwrap_value <- function(x) {
     if (is.null(x)) return(NULL)
@@ -25,6 +26,7 @@ run_forecast_pipeline <- function(event) {
 
   tenant_id <- unwrap_value(event$tenantId)
   run_id <- unwrap_value(event$runId)
+  snapshot_id <- unwrap_value(event$snapshotId)
   s3_bucket <- unwrap_value(event$s3Bucket)
   s3_key <- unwrap_value(event$s3Key)
   s3_output_prefix <- unwrap_value(event$s3OutputPrefix)
@@ -47,6 +49,7 @@ run_forecast_pipeline <- function(event) {
   input_open_status_column <- unwrap_value(event$openStatusColumnName)
   input_forecast_horizon <- suppressWarnings(as.integer(unwrap_value(event$forecastHorizon)))
   input_future_assumptions_json <- unwrap_value(event$futureAssumptionsJson)
+  execution_mode <- unwrap_value(event$executionMode)
   manifest_key <- unwrap_value(event$manifestKey)
   batch_id <- unwrap_value(event$batchId)
   batch_index <- suppressWarnings(as.integer(unwrap_value(event$batchIndex)))
@@ -56,7 +59,7 @@ run_forecast_pipeline <- function(event) {
   is_batch_run <- identical(unwrap_value(event$invocationType), "local_batch") || identical(work_type, "local_batch") || (!is.null(batch_id) && !is.null(batch_output_prefix))
   batch_series_keys <- if (is.null(batch_series_keys)) character(0) else as.character(unlist(batch_series_keys, use.names = FALSE))
 
-  if (is.null(tenant_id) || is.null(run_id) || is.null(s3_bucket) || is.null(s3_key)) {
+  if (is.null(tenant_id) || is.null(run_id) || is.null(snapshot_id) || is.null(s3_bucket) || is.null(s3_key)) {
     return(list(status = "error", message = "missing_inputs"))
   }
 
@@ -69,9 +72,38 @@ run_forecast_pipeline <- function(event) {
     )
   }
 
+  log_forecast_event <- function(event_name, message_text = NULL, fields = list()) {
+    base_fields <- list(
+      event = event_name,
+      message = message_text,
+      runId = run_id,
+      tenantId = tenant_id,
+      snapshotId = snapshot_id,
+      model = selected_model,
+      mode = selected_mode,
+      executionMode = execution_mode,
+      artifactPrefix = s3_output_prefix,
+      batchId = batch_id,
+      batchIndex = batch_index
+    )
+    payload <- c(base_fields, fields)
+    message(toJSON(payload, auto_unbox = TRUE, null = "null"))
+  }
+
   message("Forecast run env: raw_bucket=", raw_bucket, " artifact_bucket=", artifact_bucket, " forecast_runs_table=", forecast_runs_table)
   message("Forecast run input: tenant_id=", tenant_id, " run_id=", run_id, " s3_bucket=", s3_bucket, " s3_key=", s3_key, " output_prefix=", s3_output_prefix, " adjustments_key=", adjustments_key, " model=", selected_model, " mode=", selected_mode)
   message("Forecast run future assumptions raw: ", format_raw_future_assumptions_for_log(input_future_assumptions_json))
+  log_forecast_event(
+    "forecast_run_start",
+    "Starting forecast pipeline",
+    list(
+      s3Bucket = s3_bucket,
+      s3Key = s3_key,
+      adjustmentsKey = adjustments_key,
+      artifactBucket = artifact_bucket,
+      isBatchRun = is_batch_run
+    )
+  )
 
   resolve_horizon <- function(value, default_value) {
     if (is.null(value) || is.na(value)) return(default_value)
@@ -159,6 +191,16 @@ run_forecast_pipeline <- function(event) {
     " promotionRanges=",
     length(future_assumptions$promotionRanges)
   )
+  log_forecast_event(
+    "forecast_future_assumptions",
+    "Parsed future assumptions",
+    list(
+      storeState = future_assumptions$storeState,
+      closedWeekdays = future_assumptions$closedWeekdays,
+      holidayRangeCount = length(future_assumptions$holidayRanges),
+      promotionRangeCount = length(future_assumptions$promotionRanges)
+    )
+  )
 
   s3 <- paws.storage::s3()
   ddb <- NULL
@@ -168,6 +210,93 @@ run_forecast_pipeline <- function(event) {
     message("paws.database package not available; run status updates will be skipped")
   }
 
+  ddb_get_string <- function(item, key) {
+    if (is.null(item[[key]]) || is.null(item[[key]]$S)) return(NULL)
+    as.character(item[[key]]$S)
+  }
+
+  assert_runtime_context <- function() {
+    if (is.null(ddb)) {
+      stop("missing_paws_database")
+    }
+    if (is.null(forecast_runs_table) || forecast_runs_table == "") {
+      stop("missing_forecast_runs_table")
+    }
+    if (is.null(data_snapshots_table) || data_snapshots_table == "") {
+      stop("missing_data_snapshots_table")
+    }
+
+    run_item <- ddb$get_item(
+      TableName = forecast_runs_table,
+      Key = list(
+        PK = list(S = paste0("TENANT#", tenant_id)),
+        SK = list(S = paste0("RUN#", run_id))
+      )
+    )$Item
+    if (is.null(run_item)) {
+      stop("run_not_found")
+    }
+
+    expected_snapshot_id <- ddb_get_string(run_item, "snapshotId")
+    if (!is.null(expected_snapshot_id) && expected_snapshot_id != snapshot_id) {
+      stop("snapshot_mismatch")
+    }
+
+    expected_output_prefix <- ddb_get_string(run_item, "s3OutputPrefix")
+    if (!is.null(expected_output_prefix) && !is.null(s3_output_prefix) && expected_output_prefix != s3_output_prefix) {
+      stop("output_prefix_mismatch")
+    }
+
+    snapshot_item <- ddb$get_item(
+      TableName = data_snapshots_table,
+      Key = list(
+        PK = list(S = paste0("TENANT#", tenant_id)),
+        SK = list(S = paste0("SNAPSHOT#", snapshot_id))
+      )
+    )$Item
+    if (is.null(snapshot_item)) {
+      stop("snapshot_not_found")
+    }
+
+    expected_bucket <- ddb_get_string(snapshot_item, "s3Bucket")
+    expected_key <- ddb_get_string(snapshot_item, "s3Key")
+    if (!is.null(expected_bucket) && expected_bucket != s3_bucket) {
+      stop("snapshot_bucket_mismatch")
+    }
+    if (!is.null(expected_key) && expected_key != s3_key) {
+      stop("snapshot_key_mismatch")
+    }
+
+    if (is_batch_run && !is.null(batch_id) && batch_id != "") {
+      batch_item <- ddb$get_item(
+        TableName = forecast_runs_table,
+        Key = list(
+          PK = list(S = paste0("TENANT#", tenant_id)),
+          SK = list(S = paste0("BATCH#RUN#", run_id, "#", batch_id))
+        )
+      )$Item
+      if (is.null(batch_item)) {
+        stop("batch_not_found")
+      }
+
+      expected_batch_prefix <- ddb_get_string(batch_item, "s3OutputPrefix")
+      if (!is.null(expected_batch_prefix) && !is.null(batch_output_prefix) && expected_batch_prefix != batch_output_prefix) {
+        stop("batch_output_prefix_mismatch")
+      }
+    }
+
+    log_forecast_event(
+      "forecast_runtime_context_verified",
+      "Validated forecast runtime context against DynamoDB",
+      list(
+        forecastRunsTable = forecast_runs_table,
+        dataSnapshotsTable = data_snapshots_table
+      )
+    )
+  }
+
+  assert_runtime_context()
+
   read_json_from_s3 <- function(bucket, key) {
     obj <- s3$get_object(Bucket = bucket, Key = key)
     raw_text <- rawToChar(obj$Body)
@@ -175,6 +304,12 @@ run_forecast_pipeline <- function(event) {
   }
 
   write_json <- function(key, payload) {
+    artifact_name <- basename(key)
+    log_forecast_event(
+      "artifact_write_started",
+      "Writing artifact",
+      list(artifact = artifact_name, artifactKey = key)
+    )
     message("Writing artifact to s3://", artifact_bucket, "/", key)
     tryCatch({
       payload_json <- toJSON(payload, auto_unbox = TRUE)
@@ -186,8 +321,18 @@ run_forecast_pipeline <- function(event) {
         ContentType = "application/json"
       )
       message("Wrote artifact: ", key)
+      log_forecast_event(
+        "artifact_write_succeeded",
+        "Artifact write completed",
+        list(artifact = artifact_name, artifactKey = key)
+      )
     }, error = function(e) {
       message("Failed writing artifact ", key, ": ", e$message)
+      log_forecast_event(
+        "artifact_write_failed",
+        "Artifact write failed",
+        list(artifact = artifact_name, artifactKey = key, error = as.character(e$message))
+      )
       stop(e)
     })
   }
@@ -1829,16 +1974,19 @@ run_forecast_pipeline <- function(event) {
       if ((completed_count + failed_count) >= total_batches && failed_count == 0 && try_claim_aggregation()) {
         final_summary <- aggregate_batch_outputs()
         update_run_status(ddb, forecast_runs_table, tenant_id, run_id, "DONE", s3_output_prefix, final_summary)
+        log_forecast_event("forecast_run_succeeded", "Batch aggregation completed", list(status = "DONE"))
         return(list(status = "success", result = final_summary))
       }
       if ((completed_count + failed_count) >= total_batches && failed_count > 0 && try_claim_aggregation()) {
         failure_summary <- list(stage = "distributed_local_batches", reason = "one_or_more_batches_failed", completedBatchCount = completed_count, failedBatchCount = failed_count, batchCount = total_batches)
         update_run_status(ddb, forecast_runs_table, tenant_id, run_id, "FAILED", summary = failure_summary)
       }
+      log_forecast_event("forecast_run_succeeded", "Batch forecast completed", list(status = "DONE"))
       return(list(status = "success", result = summary))
     }
 
     update_run_status(ddb, forecast_runs_table, tenant_id, run_id, "DONE", s3_output_prefix, summary)
+    log_forecast_event("forecast_run_succeeded", "Forecast pipeline completed", list(status = "DONE"))
     return(list(status = "success", result = summary))
   }, error = function(e) {
     error_message <- ifelse(is.null(e$message) || e$message == "", "forecast_pipeline_failed", as.character(e$message))
@@ -1848,6 +1996,7 @@ run_forecast_pipeline <- function(event) {
       error = error_message
     )
     message("Forecast pipeline failed for run_id=", run_id, " tenant_id=", tenant_id, " error=", error_message)
+    log_forecast_event("forecast_run_failed", "Forecast pipeline failed", list(status = "FAILED", error = error_message))
     if (is_batch_run) {
       update_batch_item_status("FAILED", error_message)
       run_attrs <- increment_run_batch_counter("failedBatchCount")
