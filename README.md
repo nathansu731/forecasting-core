@@ -33,13 +33,14 @@ First-time prod bootstrap is still a two-step flow because the Lambda image func
 
 3. Run full prod `terraform-apply`.
    - Apply the full stack now that the image exists:
-     `./ops/deploy-prod.sh terraform-apply`
+       `terraform workspace select prod`
+       `./ops/deploy-prod.sh terraform-apply`
    - This is the step that creates the Lambda and the rest of the prod infrastructure.
 
 4. After the Lambda exists, use `backend-deploy` for normal updates.
    - The normal update flow now defaults the image tag to the current git SHA.
    - Build, push, and update the Lambda image in one flow:
-     `./ops/deploy-prod.sh backend-deploy`
+     `DEPLOY_AWS_PROFILE=ark-prod ./ops/deploy-prod.sh backend-deploy`
    - Promote a tested git-sha image to a release tag:
      `./ops/deploy-prod.sh promote-release <git-sha-tag> <release-tag>`
    - Promote a tested release tag to the prod tag:
