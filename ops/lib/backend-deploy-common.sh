@@ -17,6 +17,7 @@ ECR_REPOSITORY_NAME="${ECR_REPOSITORY_NAME:-forecasting-core}"
 LOCAL_IMAGE_NAME="${LOCAL_IMAGE_NAME:-forecasting-core}"
 IMAGE_TAG="${IMAGE_TAG:-${DEFAULT_IMAGE_TAG}}"
 LAMBDA_FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:-forecasting-core-fn}"
+LOCAL_BATCH_WORKER_FUNCTION_NAME="${LOCAL_BATCH_WORKER_FUNCTION_NAME:-${LAMBDA_FUNCTION_NAME}-local-batch}"
 TF_VARS_FILE="${TF_VARS_FILE:-}"
 ENABLE_PIPELINE="${ENABLE_PIPELINE:-true}"
 
@@ -202,9 +203,11 @@ lambda_update() {
   require_command aws
   local repo_uri
   repo_uri="$(ecr_repository_uri)"
-  aws lambda update-function-code \
-    --function-name "${LAMBDA_FUNCTION_NAME}" \
-    --image-uri "${repo_uri}:${IMAGE_TAG}"
+  for function_name in "${LAMBDA_FUNCTION_NAME}" "${LOCAL_BATCH_WORKER_FUNCTION_NAME}"; do
+    aws lambda update-function-code \
+      --function-name "${function_name}" \
+      --image-uri "${repo_uri}:${IMAGE_TAG}"
+  done
 }
 
 backend_deploy() {

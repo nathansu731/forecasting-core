@@ -3,6 +3,9 @@ env:
   variables:
     IMAGE_NAME: forecasting-core
 phases:
+  install:
+    runtime-versions:
+      nodejs: 24
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...

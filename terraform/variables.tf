@@ -44,6 +44,26 @@ variable "lambda_function_name" {
   default = "forecast-lambda"
 }
 
+variable "forecast_global_max_concurrency" {
+  type    = number
+  default = 5
+
+  validation {
+    condition     = var.forecast_global_max_concurrency >= 1 && var.forecast_global_max_concurrency <= 1000
+    error_message = "forecast_global_max_concurrency must be between 1 and 1000."
+  }
+}
+
+variable "local_batch_worker_max_concurrency" {
+  type    = number
+  default = 20
+
+  validation {
+    condition     = var.local_batch_worker_max_concurrency >= 2 && var.local_batch_worker_max_concurrency <= 1000
+    error_message = "local_batch_worker_max_concurrency must be between 2 and 1000."
+  }
+}
+
 # Bootstrap image for first create
 variable "initial_image_uri" {
   type    = string

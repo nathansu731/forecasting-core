@@ -10,6 +10,12 @@ resource "aws_sqs_queue" "forecast_local_batches" {
   message_retention_seconds  = 1209600
 }
 
+# This queue is only a Lambda asynchronous failure destination; it has no poller.
+resource "aws_sqs_queue" "forecast_global_failures" {
+  name                      = "${var.project_name}-forecast-global-failures"
+  message_retention_seconds = 1209600
+}
+
 resource "aws_lambda_event_source_mapping" "forecast_local_dispatch" {
   event_source_arn = aws_sqs_queue.forecast_local_runs.arn
   function_name    = aws_lambda_function.orchestrator.arn
@@ -19,11 +25,7 @@ resource "aws_lambda_event_source_mapping" "forecast_local_dispatch" {
 
 resource "aws_lambda_event_source_mapping" "forecast_local_batches" {
   event_source_arn = aws_sqs_queue.forecast_local_batches.arn
-  function_name    = aws_lambda_function.fn.arn
+  function_name    = aws_lambda_function.local_batch_worker.arn
   batch_size       = 1
   enabled          = true
-
-  scaling_config {
-    maximum_concurrency = 20
-  }
 }

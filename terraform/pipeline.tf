@@ -84,6 +84,10 @@ resource "aws_codebuild_project" "deploy" {
       name  = "LAMBDA_FUNCTION_NAME"
       value = var.lambda_function_name
     }
+    environment_variable {
+      name  = "LOCAL_BATCH_WORKER_FUNCTION_NAME"
+      value = "${var.lambda_function_name}-local-batch"
+    }
   }
   source {
     type      = "CODEPIPELINE"

@@ -1,10 +1,16 @@
 version: 0.2
 phases:
+  install:
+    runtime-versions:
+      nodejs: 24
   build:
     commands:
       - echo Deploying Lambda image...
       - IMAGE_URI=$(cat image-detail.json | jq -r .imageUri)
-      - aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --image-uri $IMAGE_URI
+      - |
+        for function_name in "$LAMBDA_FUNCTION_NAME" "$LOCAL_BATCH_WORKER_FUNCTION_NAME"; do
+          aws lambda update-function-code --function-name "$function_name" --image-uri "$IMAGE_URI"
+        done
 artifacts:
   files:
     - image-detail.json

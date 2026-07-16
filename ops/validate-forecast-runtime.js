@@ -13,6 +13,7 @@ const sharedJs = read("src/orchestrator/lib/shared.js");
 const handlersJs = read("src/orchestrator/lib/handlers.js");
 const entrypointR = read("src/entrypoint.R");
 const sqsTf = read("terraform/sqs.tf");
+const lambdaTf = read("terraform/lambda.tf");
 const dockerfile = read("src/Dockerfile");
 const buildspecBuild = read("buildspec-build.yml");
 
@@ -112,8 +113,28 @@ assertIncludes(
 );
 assertIncludes(
   sqsTf,
-  'function_name    = aws_lambda_function.fn.arn',
-  "forecast_local_batches queue is not mapped to the forecast runtime Lambda"
+  'function_name    = aws_lambda_function.local_batch_worker.arn',
+  "forecast_local_batches queue is not mapped to the dedicated local batch worker"
+);
+assertIncludes(
+  lambdaTf,
+  'resource "aws_lambda_function" "local_batch_worker"',
+  "dedicated local batch worker Lambda is missing"
+);
+assertIncludes(
+  lambdaTf,
+  "reserved_concurrent_executions = var.local_batch_worker_max_concurrency",
+  "local batch worker does not have an independent concurrency limit"
+);
+assertIncludes(
+  lambdaTf,
+  'resource "aws_lambda_function_event_invoke_config" "forecast_global_failures"',
+  "global forecast async failure handling is missing"
+);
+assertIncludes(
+  sqsTf,
+  'resource "aws_sqs_queue" "forecast_global_failures"',
+  "global forecast failure queue is missing"
 );
 
 if (failures.length > 0) {

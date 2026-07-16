@@ -1,5 +1,13 @@
 # Forecasting Core
 
+## Node Version
+
+This repo now standardizes on Node 24 for local scripts, CodeBuild, and the managed Node Lambda runtime.
+
+If you use `nvm`:
+
+`nvm use`
+
 ## Prod Deploy Runbook
 
 First-time prod bootstrap is still a two-step flow because the Lambda image function needs an image in ECR before Terraform can create the function.
@@ -37,9 +45,9 @@ First-time prod bootstrap is still a two-step flow because the Lambda image func
        `./ops/deploy-prod.sh terraform-apply`
    - This is the step that creates the Lambda and the rest of the prod infrastructure.
 
-4. After the Lambda exists, use `backend-deploy` for normal updates.
+4. After the Lambdas exist, use `backend-deploy` for normal updates.
    - The normal update flow now defaults the image tag to the current git SHA.
-   - Build, push, and update the Lambda image in one flow:
+   - Build, push, and update both forecast-runtime Lambda images in one flow:
      `DEPLOY_AWS_PROFILE=ark-prod ./ops/deploy-prod.sh backend-deploy`
    - Promote a tested git-sha image to a release tag:
      `./ops/deploy-prod.sh promote-release <git-sha-tag> <release-tag>`
@@ -47,6 +55,8 @@ First-time prod bootstrap is still a two-step flow because the Lambda image func
      `./ops/deploy-prod.sh promote-prod <release-tag> prod`
    - Roll the Lambda to the promoted prod tag:
      `IMAGE_TAG=prod ./ops/deploy-prod.sh lambda-update`
+
+The local batch worker is capped independently from global forecast runs. If a global asynchronous invocation exhausts its retry window, Lambda writes its invocation record to the `forecasting-forecast-global-failures` SQS queue; this queue has no poller and therefore creates no idle SQS traffic.
 
 For the dev account, use the same identity check pattern with:
 `./ops/deploy-dev.sh whoami`

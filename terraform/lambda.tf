@@ -1,29 +1,63 @@
+locals {
+  forecast_runtime_environment = {
+    RAW_BUCKET                      = aws_s3_bucket.raw.bucket
+    ARTIFACT_BUCKET                 = aws_s3_bucket.artifacts.bucket
+    FORECAST_RUNS_TABLE             = aws_dynamodb_table.forecast_runs.name
+    DATA_SNAPSHOTS_TABLE            = aws_dynamodb_table.data_snapshots.name
+    NOTIFICATIONS_TABLE             = aws_dynamodb_table.notifications.name
+    TENANTS_TABLE                   = aws_dynamodb_table.tenants.name
+    ENTITLEMENTS_TABLE              = aws_dynamodb_table.entitlements.name
+    LLM_USAGE_TABLE                 = aws_dynamodb_table.llm_usage.name
+    APPSYNC_API_URL                 = aws_appsync_graphql_api.api.uris["GRAPHQL"]
+    APPSYNC_API_KEY                 = aws_appsync_api_key.lambda_status_updates.key
+    ASSISTANT_ENABLED               = tostring(var.assistant_enabled)
+    ASSISTANT_CACHE_TTL_SECONDS     = tostring(var.assistant_cache_ttl_seconds)
+    ASSISTANT_RATE_LIMIT_PER_MINUTE = tostring(var.assistant_rate_limit_per_minute)
+    ASSISTANT_RATE_LIMIT_PER_HOUR   = tostring(var.assistant_rate_limit_per_hour)
+    ASSISTANT_OPENAI_TIMEOUT_MS     = tostring(var.assistant_openai_timeout_ms)
+  }
+}
+
 # ---------- Lambda (container image) ----------
 resource "aws_lambda_function" "fn" {
-  function_name = var.lambda_function_name
-  package_type  = "Image"
-  image_uri     = var.initial_image_uri
-  role          = aws_iam_role.lambda_exec.arn
-  timeout       = 300
-  memory_size   = 2048
-  architectures = ["x86_64"]
+  function_name                  = var.lambda_function_name
+  package_type                   = "Image"
+  image_uri                      = var.initial_image_uri
+  role                           = aws_iam_role.lambda_exec.arn
+  timeout                        = 300
+  memory_size                    = 2048
+  architectures                  = ["x86_64"]
+  reserved_concurrent_executions = var.forecast_global_max_concurrency
+
   environment {
-    variables = {
-      RAW_BUCKET                      = aws_s3_bucket.raw.bucket
-      ARTIFACT_BUCKET                 = aws_s3_bucket.artifacts.bucket
-      FORECAST_RUNS_TABLE             = aws_dynamodb_table.forecast_runs.name
-      DATA_SNAPSHOTS_TABLE            = aws_dynamodb_table.data_snapshots.name
-      NOTIFICATIONS_TABLE             = aws_dynamodb_table.notifications.name
-      TENANTS_TABLE                   = aws_dynamodb_table.tenants.name
-      ENTITLEMENTS_TABLE              = aws_dynamodb_table.entitlements.name
-      LLM_USAGE_TABLE                 = aws_dynamodb_table.llm_usage.name
-      APPSYNC_API_URL                 = aws_appsync_graphql_api.api.uris["GRAPHQL"]
-      APPSYNC_API_KEY                 = aws_appsync_api_key.lambda_status_updates.key
-      ASSISTANT_ENABLED               = tostring(var.assistant_enabled)
-      ASSISTANT_CACHE_TTL_SECONDS     = tostring(var.assistant_cache_ttl_seconds)
-      ASSISTANT_RATE_LIMIT_PER_MINUTE = tostring(var.assistant_rate_limit_per_minute)
-      ASSISTANT_RATE_LIMIT_PER_HOUR   = tostring(var.assistant_rate_limit_per_hour)
-      ASSISTANT_OPENAI_TIMEOUT_MS     = tostring(var.assistant_openai_timeout_ms)
+    variables = local.forecast_runtime_environment
+  }
+}
+
+# Isolate local SQS batches so their worker cap does not throttle global forecast runs.
+resource "aws_lambda_function" "local_batch_worker" {
+  function_name                  = "${var.lambda_function_name}-local-batch"
+  package_type                   = "Image"
+  image_uri                      = var.initial_image_uri
+  role                           = aws_iam_role.lambda_exec.arn
+  timeout                        = 300
+  memory_size                    = 2048
+  architectures                  = ["x86_64"]
+  reserved_concurrent_executions = var.local_batch_worker_max_concurrency
+
+  environment {
+    variables = local.forecast_runtime_environment
+  }
+}
+
+resource "aws_lambda_function_event_invoke_config" "forecast_global_failures" {
+  function_name                = aws_lambda_function.fn.function_name
+  maximum_event_age_in_seconds = 21600
+  maximum_retry_attempts       = 2
+
+  destination_config {
+    on_failure {
+      destination = aws_sqs_queue.forecast_global_failures.arn
     }
   }
 }
@@ -127,7 +161,7 @@ resource "aws_lambda_function" "orchestrator" {
   filename         = data.archive_file.orchestrator_zip.output_path
   source_code_hash = data.archive_file.orchestrator_zip.output_base64sha256
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs24.x"
   role             = aws_iam_role.orchestrator_exec.arn
   timeout          = 30
   memory_size      = 512
@@ -235,14 +269,24 @@ resource "aws_iam_role_policy" "lambda_data_access" {
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes",
           "sqs:ReceiveMessage",
-          "sqs:ChangeMessageVisibility",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = [aws_sqs_queue.forecast_local_batches.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.forecast_global_failures.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:Query"
         ]
         Resource = [
-          aws_sqs_queue.forecast_local_batches.arn,
           aws_dynamodb_table.forecast_runs.arn,
           aws_dynamodb_table.data_snapshots.arn,
           aws_dynamodb_table.entitlements.arn,

@@ -12,5 +12,6 @@ export ENABLE_PIPELINE="${ENABLE_PIPELINE:-false}"
 export ECR_REPOSITORY_NAME="${ECR_REPOSITORY_NAME:-forecasting-core}"
 export LOCAL_IMAGE_NAME="${LOCAL_IMAGE_NAME:-forecasting-core}"
 export LAMBDA_FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:-forecasting-core-fn}"
+export LOCAL_BATCH_WORKER_FUNCTION_NAME="${LOCAL_BATCH_WORKER_FUNCTION_NAME:-${LAMBDA_FUNCTION_NAME}-local-batch}"
 
 exec "${SCRIPT_DIR}/lib/backend-deploy-common.sh" "$@"
