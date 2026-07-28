@@ -1,12 +1,10 @@
 const crypto = require("crypto");
 const { DynamoDBClient, PutItemCommand, QueryCommand, GetItemCommand, UpdateItemCommand, DeleteItemCommand } = require("@aws-sdk/client-dynamodb");
-const { LambdaClient, InvokeCommand } = require("@aws-sdk/client-lambda");
 const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
 const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { marshall, unmarshall } = require("@aws-sdk/util-dynamodb");
 
 const ddb = new DynamoDBClient({});
-const lambda = new LambdaClient({});
 const sqs = new SQSClient({});
 const s3 = new S3Client({});
 
@@ -14,7 +12,7 @@ const RAW_BUCKET = process.env.RAW_BUCKET || "";
 const ARTIFACT_BUCKET = process.env.ARTIFACT_BUCKET || "";
 const FORECAST_RUNS_TABLE = process.env.FORECAST_RUNS_TABLE || "";
 const DATA_SNAPSHOTS_TABLE = process.env.DATA_SNAPSHOTS_TABLE || "";
-const FORECAST_LAMBDA_ARN = process.env.FORECAST_LAMBDA_ARN || "";
+const FORECAST_GLOBAL_RUNS_QUEUE_URL = process.env.FORECAST_GLOBAL_RUNS_QUEUE_URL || "";
 const FORECAST_LOCAL_RUNS_QUEUE_URL = process.env.FORECAST_LOCAL_RUNS_QUEUE_URL || "";
 const FORECAST_LOCAL_BATCH_QUEUE_URL = process.env.FORECAST_LOCAL_BATCH_QUEUE_URL || "";
 const FORECAST_LOCAL_BATCH_SIZE = Number(process.env.FORECAST_LOCAL_BATCH_SIZE || "0");
@@ -588,7 +586,6 @@ const handleGetResultFile = async (event, keySuffix) => {
 
 module.exports = {
   ddb,
-  lambda,
   sqs,
   marshall,
   unmarshall,
@@ -597,13 +594,12 @@ module.exports = {
   QueryCommand,
   UpdateItemCommand,
   DeleteItemCommand,
-  InvokeCommand,
   SendMessageCommand,
   RAW_BUCKET,
   ARTIFACT_BUCKET,
   FORECAST_RUNS_TABLE,
   DATA_SNAPSHOTS_TABLE,
-  FORECAST_LAMBDA_ARN,
+  FORECAST_GLOBAL_RUNS_QUEUE_URL,
   FORECAST_LOCAL_RUNS_QUEUE_URL,
   FORECAST_LOCAL_BATCH_QUEUE_URL,
   FORECAST_LOCAL_BATCH_SIZE,

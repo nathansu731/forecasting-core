@@ -1,5 +1,5 @@
 const { dispatchField, handleQueueRecords } = require("./lib/handlers");
-const { ARTIFACT_BUCKET, FORECAST_RUNS_TABLE, DATA_SNAPSHOTS_TABLE, FORECAST_LAMBDA_ARN, requireEnv } = require("./lib/shared");
+const { ARTIFACT_BUCKET, FORECAST_RUNS_TABLE, DATA_SNAPSHOTS_TABLE, FORECAST_GLOBAL_RUNS_QUEUE_URL, requireEnv } = require("./lib/shared");
 
 exports.handler = async (event) => {
   try {
@@ -13,7 +13,7 @@ exports.handler = async (event) => {
     const fieldName = event?.info?.fieldName || "";
     if (fieldName === "startForecastRun") {
       requireEnv(DATA_SNAPSHOTS_TABLE, "DATA_SNAPSHOTS_TABLE");
-      requireEnv(FORECAST_LAMBDA_ARN, "FORECAST_LAMBDA_ARN");
+      requireEnv(FORECAST_GLOBAL_RUNS_QUEUE_URL, "FORECAST_GLOBAL_RUNS_QUEUE_URL");
     }
 
     if (process.env.ORCHESTRATOR_DEBUG_LOGS === "1") {

@@ -8,10 +8,11 @@ github_branch           = "main"
 project_name            = "forecasting"
 region                  = "ap-southeast-2"
 cognito_user_pool_id    = "<cognito_user_pool_id>"
+raw_upload_allowed_origins = ["http://localhost:3000"]
 lambda_function_name    = "forecasting-core-fn"
 initial_image_uri       = "<account_id>.dkr.ecr.<region>.amazonaws.com/forecasting-core:latest"
-forecast_global_max_concurrency      = 5
-local_batch_worker_max_concurrency   = 20
+forecast_global_max_concurrency      = 2
+local_batch_worker_max_concurrency   = 2
 enable_pipeline         = true
 
 # Optional: schedule inventory dashboard data-source due sync worker.

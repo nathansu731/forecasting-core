@@ -7,8 +7,19 @@
 # If a model fails to provide forecasts, it will return snaive forecasts
 
 fit_auto_arima_safe <- function(time_series, xreg = NULL, use_lambda = TRUE, seasonal = TRUE) {
-  time_series <- as.numeric(time_series)
-  time_series[!is.finite(time_series)] <- 0
+  if (any(!is.finite(time_series))) {
+    numeric_values <- as.numeric(time_series)
+    numeric_values[!is.finite(numeric_values)] <- 0
+
+    # Preserve the msts seasonal periods that auto.arima needs to evaluate weekly seasonality.
+    if (inherits(time_series, "msts")) {
+      time_series <- forecast:::msts(numeric_values, seasonal.periods = attr(time_series, "msts"))
+    } else if (is.ts(time_series)) {
+      time_series <- stats::ts(numeric_values, frequency = stats::frequency(time_series))
+    } else {
+      time_series <- numeric_values
+    }
+  }
   series_length <- length(time_series)
   # Local Lambda runs need a cheaper ARIMA search when xreg is present or the
   # history is long enough to make exact search expensive.
@@ -16,12 +27,12 @@ fit_auto_arima_safe <- function(time_series, xreg = NULL, use_lambda = TRUE, sea
   args <- list(
     y = time_series,
     seasonal = seasonal,
-    seasonal.test = "ocsb",
     stepwise = TRUE,
     approximation = use_approximation
   )
   if (!is.null(xreg)) {
     args$xreg <- xreg
+    args$seasonal.test <- "ocsb"
   }
   if (isTRUE(use_approximation) && series_length > 180) {
     args$truncate <- 180
@@ -79,7 +90,8 @@ get_arima_forecasts <- function(time_series, forecast_horizon){
   })
     
   tryCatch({
-    forecast:::forecast.Arima(fit, h = forecast_horizon)$mean
+    # lambda = 0 fits on the log scale; bias adjustment restores a mean-demand forecast.
+    forecast:::forecast.Arima(fit, h = forecast_horizon, biasadj = TRUE)$mean
   }, error = function(e) { 
     warning(e)
     get_snaive_forecasts(time_series, forecast_horizon)
@@ -266,9 +278,9 @@ get_regression_arima_forecasts <- function(time_series, forecast_horizon, xreg_t
 
   tryCatch({
     forecast_values <- if (fit_requires_xreg) {
-      forecast:::forecast.Arima(fit, h = forecast_horizon, xreg = future_matrix)$mean
+      forecast:::forecast.Arima(fit, h = forecast_horizon, xreg = future_matrix, biasadj = TRUE)$mean
     } else {
-      forecast:::forecast.Arima(fit, h = forecast_horizon)$mean
+      forecast:::forecast.Arima(fit, h = forecast_horizon, biasadj = TRUE)$mean
     }
     annotate_regression_forecast(
       forecast_values,

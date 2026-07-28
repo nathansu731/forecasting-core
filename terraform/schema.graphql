@@ -69,6 +69,7 @@ type ForecastRunResponse {
     status: String!
     run: ForecastRun
     message: String
+    result: AWSJSON
 }
 
 type ForecastRun {
@@ -178,6 +179,7 @@ input StartForecastInput {
     skuColumnName: String
     storeColumnName: String
     targetVariable: String
+    onHandColumnName: String
     priceColumnName: String
     holidayColumnName: String
     promotionColumnName: String

@@ -3,7 +3,6 @@ const { searchKnowledgeBase } = require("./assistant-kb");
 
 const {
   ddb,
-  lambda,
   sqs,
   marshall,
   unmarshall,
@@ -12,13 +11,12 @@ const {
   QueryCommand,
   UpdateItemCommand,
   DeleteItemCommand,
-  InvokeCommand,
   SendMessageCommand,
   RAW_BUCKET,
   ARTIFACT_BUCKET,
   FORECAST_RUNS_TABLE,
   DATA_SNAPSHOTS_TABLE,
-  FORECAST_LAMBDA_ARN,
+  FORECAST_GLOBAL_RUNS_QUEUE_URL,
   FORECAST_LOCAL_RUNS_QUEUE_URL,
   FORECAST_LOCAL_BATCH_QUEUE_URL,
   FORECAST_LOCAL_BATCH_SIZE,
@@ -2050,11 +2048,10 @@ const handleStartForecastRun = async (event) => {
       })
     );
   } else {
-    await lambda.send(
-      new InvokeCommand({
-        FunctionName: FORECAST_LAMBDA_ARN,
-        InvocationType: "Event",
-        Payload: Buffer.from(JSON.stringify(payload)),
+    await sqs.send(
+      new SendMessageCommand({
+        QueueUrl: FORECAST_GLOBAL_RUNS_QUEUE_URL,
+        MessageBody: JSON.stringify(payload),
       })
     );
   }

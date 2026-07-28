@@ -12,6 +12,7 @@ const forecastR = read("src/scripts/forecast.R");
 const sharedJs = read("src/orchestrator/lib/shared.js");
 const handlersJs = read("src/orchestrator/lib/handlers.js");
 const entrypointR = read("src/entrypoint.R");
+const localUnivariateModelsR = read("src/scripts/models/local_univariate_models.R");
 const sqsTf = read("terraform/sqs.tf");
 const lambdaTf = read("terraform/lambda.tf");
 const dockerfile = read("src/Dockerfile");
@@ -70,8 +71,8 @@ assertIncludes(
 );
 assertIncludes(
   handlersJs,
-  'FunctionName: FORECAST_LAMBDA_ARN',
-  "non-local forecast dispatch is not invoking the forecast Lambda directly"
+  'QueueUrl: FORECAST_GLOBAL_RUNS_QUEUE_URL',
+  "global forecast dispatch is not sending work to the forecast_global_runs queue"
 );
 assertIncludes(
   entrypointR,
@@ -87,6 +88,24 @@ assertIncludes(
   forecastR,
   "assert_runtime_context()",
   "forecast runtime is not revalidating async context against DynamoDB"
+);
+assertIncludes(
+  localUnivariateModelsR,
+  'inherits(time_series, "msts")',
+  "ARIMA sanitization does not preserve msts seasonal metadata"
+);
+assertIncludes(
+  localUnivariateModelsR,
+  'forecast:::msts(numeric_values, seasonal.periods = attr(time_series, "msts"))',
+  "ARIMA sanitization does not reconstruct msts inputs with their seasonal periods"
+);
+if (localUnivariateModelsR.includes("time_series <- as.numeric(time_series)")) {
+  failures.push("ARIMA sanitization strips msts seasonal metadata before auto.arima fitting");
+}
+assertIncludes(
+  localUnivariateModelsR,
+  "forecast:::forecast.Arima(fit, h = forecast_horizon, biasadj = TRUE)",
+  "log-scale ARIMA forecasts are not bias-adjusted after back-transformation"
 );
 assertIncludes(
   dockerfile,
@@ -108,6 +127,16 @@ if (buildspecBuild.includes(":latest")) {
 }
 assertIncludes(
   sqsTf,
+  'resource "aws_lambda_event_source_mapping" "forecast_global_runs"',
+  "global forecast queue is not mapped to the forecast runtime"
+);
+assertIncludes(
+  sqsTf,
+  "maximum_concurrency = var.forecast_global_max_concurrency",
+  "global forecast queue does not have a bounded consumer concurrency"
+);
+assertIncludes(
+  sqsTf,
   'function_name    = aws_lambda_function.orchestrator.arn',
   "forecast_local_runs queue is not mapped to the orchestrator Lambda"
 );
@@ -122,14 +151,14 @@ assertIncludes(
   "dedicated local batch worker Lambda is missing"
 );
 assertIncludes(
-  lambdaTf,
-  "reserved_concurrent_executions = var.local_batch_worker_max_concurrency",
-  "local batch worker does not have an independent concurrency limit"
+  sqsTf,
+  "maximum_concurrency = var.local_batch_worker_max_concurrency",
+  "local batch worker does not have an independent consumer concurrency limit"
 );
 assertIncludes(
-  lambdaTf,
-  'resource "aws_lambda_function_event_invoke_config" "forecast_global_failures"',
-  "global forecast async failure handling is missing"
+  sqsTf,
+  "deadLetterTargetArn = aws_sqs_queue.forecast_global_failures.arn",
+  "global forecast failure queue is not configured as a dead-letter queue"
 );
 assertIncludes(
   sqsTf,

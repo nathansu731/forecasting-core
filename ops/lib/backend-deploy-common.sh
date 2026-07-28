@@ -203,11 +203,33 @@ lambda_update() {
   require_command aws
   local repo_uri
   repo_uri="$(ecr_repository_uri)"
-  for function_name in "${LAMBDA_FUNCTION_NAME}" "${LOCAL_BATCH_WORKER_FUNCTION_NAME}"; do
-    aws lambda update-function-code \
-      --function-name "${function_name}" \
-      --image-uri "${repo_uri}:${IMAGE_TAG}"
-  done
+
+  update_lambda_image "${LAMBDA_FUNCTION_NAME}" "${repo_uri}:${IMAGE_TAG}" required
+  update_lambda_image "${LOCAL_BATCH_WORKER_FUNCTION_NAME}" "${repo_uri}:${IMAGE_TAG}" optional
+}
+
+update_lambda_image() {
+  local function_name="$1"
+  local image_uri="$2"
+  local required="$3"
+  local lookup_output
+
+  if ! lookup_output="$(aws lambda get-function \
+    --function-name "${function_name}" \
+    --query 'Configuration.FunctionName' \
+    --output text 2>&1)"; then
+    if [[ "${required}" == "optional" && "${lookup_output}" == *"ResourceNotFoundException"* ]]; then
+      echo "Skipping optional Lambda that has not been provisioned yet: ${function_name}"
+      return
+    fi
+
+    printf '%s\n' "${lookup_output}" >&2
+    die "could not inspect Lambda function: ${function_name}"
+  fi
+
+  aws lambda update-function-code \
+    --function-name "${function_name}" \
+    --image-uri "${image_uri}"
 }
 
 backend_deploy() {

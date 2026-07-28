@@ -8,6 +8,12 @@ variable "region" {
   default = "ap-southeast-2"
 }
 
+variable "raw_upload_allowed_origins" {
+  type        = list(string)
+  description = "Browser origins allowed to upload directly to the raw S3 bucket with pre-signed URLs."
+  default     = ["http://localhost:3000"]
+}
+
 variable "cognito_user_pool_id" {
   type = string
 }
@@ -46,17 +52,17 @@ variable "lambda_function_name" {
 
 variable "forecast_global_max_concurrency" {
   type    = number
-  default = 5
+  default = 2
 
   validation {
-    condition     = var.forecast_global_max_concurrency >= 1 && var.forecast_global_max_concurrency <= 1000
-    error_message = "forecast_global_max_concurrency must be between 1 and 1000."
+    condition     = var.forecast_global_max_concurrency >= 2 && var.forecast_global_max_concurrency <= 1000
+    error_message = "forecast_global_max_concurrency must be between 2 and 1000."
   }
 }
 
 variable "local_batch_worker_max_concurrency" {
   type    = number
-  default = 20
+  default = 2
 
   validation {
     condition     = var.local_batch_worker_max_concurrency >= 2 && var.local_batch_worker_max_concurrency <= 1000

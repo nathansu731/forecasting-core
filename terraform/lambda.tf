@@ -20,45 +20,41 @@ locals {
 
 # ---------- Lambda (container image) ----------
 resource "aws_lambda_function" "fn" {
-  function_name                  = var.lambda_function_name
-  package_type                   = "Image"
-  image_uri                      = var.initial_image_uri
-  role                           = aws_iam_role.lambda_exec.arn
-  timeout                        = 300
-  memory_size                    = 2048
-  architectures                  = ["x86_64"]
-  reserved_concurrent_executions = var.forecast_global_max_concurrency
+  function_name = var.lambda_function_name
+  package_type  = "Image"
+  image_uri     = var.initial_image_uri
+  role          = aws_iam_role.lambda_exec.arn
+  timeout       = 300
+  memory_size   = 2048
+  architectures = ["x86_64"]
 
   environment {
     variables = local.forecast_runtime_environment
+  }
+
+  # Runtime releases are published by ops/deploy-*.sh, not Terraform applies.
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 
 # Isolate local SQS batches so their worker cap does not throttle global forecast runs.
 resource "aws_lambda_function" "local_batch_worker" {
-  function_name                  = "${var.lambda_function_name}-local-batch"
-  package_type                   = "Image"
-  image_uri                      = var.initial_image_uri
-  role                           = aws_iam_role.lambda_exec.arn
-  timeout                        = 300
-  memory_size                    = 2048
-  architectures                  = ["x86_64"]
-  reserved_concurrent_executions = var.local_batch_worker_max_concurrency
+  function_name = "${var.lambda_function_name}-local-batch"
+  package_type  = "Image"
+  image_uri     = var.initial_image_uri
+  role          = aws_iam_role.lambda_exec.arn
+  timeout       = 300
+  memory_size   = 2048
+  architectures = ["x86_64"]
 
   environment {
     variables = local.forecast_runtime_environment
   }
-}
 
-resource "aws_lambda_function_event_invoke_config" "forecast_global_failures" {
-  function_name                = aws_lambda_function.fn.function_name
-  maximum_event_age_in_seconds = 21600
-  maximum_retry_attempts       = 2
-
-  destination_config {
-    on_failure {
-      destination = aws_sqs_queue.forecast_global_failures.arn
-    }
+  # Keep infrastructure applies from rolling a released worker image back to bootstrap.
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 
@@ -128,16 +124,9 @@ resource "aws_iam_role_policy" "orchestrator_data_access" {
       },
       {
         Effect = "Allow"
-        Action = ["lambda:InvokeFunction"]
-        Resource = [
-          aws_lambda_function.fn.arn,
-          "${aws_lambda_function.fn.arn}:*"
-        ]
-      },
-      {
-        Effect = "Allow"
         Action = ["sqs:SendMessage"]
         Resource = [
+          aws_sqs_queue.forecast_global_runs.arn,
           aws_sqs_queue.forecast_local_runs.arn,
           aws_sqs_queue.forecast_local_batches.arn
         ]
@@ -172,7 +161,7 @@ resource "aws_lambda_function" "orchestrator" {
       ARTIFACT_BUCKET                         = aws_s3_bucket.artifacts.bucket
       FORECAST_RUNS_TABLE                     = aws_dynamodb_table.forecast_runs.name
       DATA_SNAPSHOTS_TABLE                    = aws_dynamodb_table.data_snapshots.name
-      FORECAST_LAMBDA_ARN                     = aws_lambda_function.fn.arn
+      FORECAST_GLOBAL_RUNS_QUEUE_URL          = aws_sqs_queue.forecast_global_runs.id
       FORECAST_LOCAL_RUNS_QUEUE_URL           = aws_sqs_queue.forecast_local_runs.id
       FORECAST_LOCAL_BATCH_QUEUE_URL          = aws_sqs_queue.forecast_local_batches.id
       FORECAST_LOCAL_BATCH_SIZE               = "2"
@@ -271,7 +260,10 @@ resource "aws_iam_role_policy" "lambda_data_access" {
           "sqs:ReceiveMessage",
           "sqs:ChangeMessageVisibility"
         ]
-        Resource = [aws_sqs_queue.forecast_local_batches.arn]
+        Resource = [
+          aws_sqs_queue.forecast_global_runs.arn,
+          aws_sqs_queue.forecast_local_batches.arn
+        ]
       },
       {
         Effect   = "Allow"
